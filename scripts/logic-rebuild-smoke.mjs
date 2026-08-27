@@ -89,6 +89,10 @@ assert.equal(
 const cartoProxySource = fs.readFileSync(path.join(cwd, 'src/app/api/map-tiles/[...path]/route.ts'), 'utf8');
 assert.match(cartoProxySource, /process\.env\.CARTO_BASEMAP_KEY/);
 assert.equal(cartoProxySource.includes('NEXT_PUBLIC_CARTO'), false, 'the CARTO key must never enter client code');
+const mainAppSource = fs.readFileSync(path.join(cwd, 'src/components/MainApp.tsx'), 'utf8');
+assert.match(mainAppSource, /isDarkMode \? 'Dark Mode' : 'Light Mode'/, 'theme control labels the active mode');
+const globalCssSource = fs.readFileSync(path.join(cwd, 'src/app/globals.css'), 'utf8');
+assert.match(globalCssSource, /\.leaflet-control-attribution\s*\{[\s\S]*?background: transparent !important;/, 'map attribution blends into the basemap');
 assert.equal(LINES.MRT7.color, '#800000', 'MRT-7 uses the Maroon Line color');
 assert.equal(getStationBadge('MRT7', 1), 'ML01', 'MRT-7 uses the Maroon Line station prefix');
 assert.equal(getLineColor('MRT7'), 'bg-mrt7', 'MRT-7 uses the semantic maroon UI token');

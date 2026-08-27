@@ -112,4 +112,31 @@
   .train-tooltip::before {
     border-top-color: rgba(0, 0, 0, 0.85) !important;
   }
+
+  .leaflet-control-attribution {
+    margin: 0 5px 4px 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-family: var(--font-cabin), Cabin, system-ui, sans-serif !important;
+    font-size: 9px !important;
+    font-weight: 500 !important;
+    line-height: 1.25 !important;
+  }
+
+  .leaflet-control-attribution,
+  .leaflet-control-attribution a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  .tt-map-theme-dark .leaflet-control-attribution {
+    color: rgba(255, 255, 255, 0.42) !important;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+  }
+
+  .tt-map-theme-light .leaflet-control-attribution {
+    color: rgba(9, 9, 11, 0.48) !important;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+  }
 }

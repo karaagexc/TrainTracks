@@ -324,14 +324,16 @@ function MainAppShell() {
                         <div className="absolute left-0 mt-2 w-52 bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-3 space-y-1 animate-in fade-in slide-in-from-top-2 duration-200">
                             <button
                                 onClick={toggleDarkMode}
+                                aria-label={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
+                                aria-pressed={isDarkMode}
                                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors group"
                             >
                                 {isDarkMode ? (
-                                    <Sun className="w-4 h-4 text-yellow-400 fill-yellow-400/20 group-hover:rotate-90 transition-transform duration-500" />
-                                ) : (
                                     <Moon className="w-4 h-4 text-blue-300 fill-blue-300/20 group-hover:-rotate-12 transition-transform duration-500" />
+                                ) : (
+                                    <Sun className="w-4 h-4 text-yellow-400 fill-yellow-400/20 group-hover:rotate-90 transition-transform duration-500" />
                                 )}
-                                <span className="text-xs font-bold text-white/80">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+                                <span className="text-xs font-bold text-white/80">{isDarkMode ? 'Dark Mode' : 'Light Mode'}</span>
                                 {darkModeOverride === null && (
                                     <span className="ml-auto text-[9px] text-white/30 font-mono">AUTO</span>
                                 )}

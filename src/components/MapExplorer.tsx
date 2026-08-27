@@ -789,7 +789,11 @@ function MapExplorer({ className }: { className?: string }) {
     if (!LeafletData) return <div className="w-full h-full bg-zinc-900 animate-pulse" />;
 
     return (
-        <div className={clsx("relative w-full h-full bg-zinc-900 overflow-hidden", className)}>
+        <div className={clsx(
+            "relative w-full h-full bg-zinc-900 overflow-hidden",
+            isDarkMode ? "tt-map-theme-dark" : "tt-map-theme-light",
+            className,
+        )}>
             <MapContainer
                 center={[14.6091, 121.0223]}
                 zoom={12}
