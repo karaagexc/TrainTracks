@@ -1,0 +1,7 @@
+.git
+.next
+.tmp.driveupload
+.tmp.drivedownload
+.tmp-edge-debug
+node_modules
+train-tracks

@@ -1,0 +1,157 @@
+Route,Fare
+Recto-Legarda,15
+Recto-Pureza,16
+Recto-V.Mapa,18
+Recto-J. Ruiz,19
+Recto-Gilmore,21
+Recto-Betty Go-Belmonte,22
+Recto-Araneta Center-Cubao,23
+Recto-Anonas,25
+Recto-Katipunan,26
+Recto-Santolan,28
+Recto-Marikina-Pasig,31
+Recto-Antipolo,33
+Legarda-Recto,15
+Legarda-Pureza,15
+Legarda-V.Mapa,17
+Legarda-J. Ruiz,18
+Legarda-Gilmore,19
+Legarda-Betty Go-Belmonte,21
+Legarda-Araneta Center-Cubao,22
+Legarda-Anonas,24
+Legarda-Katipunan,25
+Legarda-Santolan,27
+Legarda-Marikina-Pasig,29
+Legarda-Antipolo,32
+Pureza-Recto,16
+Pureza-Legarda,15
+Pureza-V.Mapa,15
+Pureza-J. Ruiz,16
+Pureza-Gilmore,18
+Pureza-Betty Go-Belmonte,19
+Pureza-Araneta Center-Cubao,20
+Pureza-Anonas,22
+Pureza-Katipunan,23
+Pureza-Santolan,26
+Pureza-Marikina-Pasig,28
+Pureza-Antipolo,30
+V.Mapa-Recto,18
+V.Mapa-Legarda,17
+V.Mapa-Pureza,15
+V.Mapa-J. Ruiz,15
+V.Mapa-Gilmore,16
+V.Mapa-Betty Go-Belmonte,17
+V.Mapa-Araneta Center-Cubao,19
+V.Mapa-Anonas,20
+V.Mapa-Katipunan,22
+V.Mapa-Santolan,24
+V.Mapa-Marikina-Pasig,26
+V.Mapa-Antipolo,29
+J. Ruiz-Recto,19
+J. Ruiz-Legarda,18
+J. Ruiz-Pureza,16
+J. Ruiz-V.Mapa,15
+J. Ruiz-Gilmore,14
+J. Ruiz-Betty Go-Belmonte,16
+J. Ruiz-Araneta Center-Cubao,17
+J. Ruiz-Anonas,19
+J. Ruiz-Katipunan,20
+J. Ruiz-Santolan,22
+J. Ruiz-Marikina-Pasig,24
+J. Ruiz-Antipolo,27
+Gilmore-Recto,21
+Gilmore-Legarda,19
+Gilmore-Pureza,18
+Gilmore-V.Mapa,16
+Gilmore-J. Ruiz,14
+Gilmore-Betty Go-Belmonte,15
+Gilmore-Araneta Center-Cubao,16
+Gilmore-Anonas,18
+Gilmore-Katipunan,19
+Gilmore-Santolan,21
+Gilmore-Marikina-Pasig,23
+Gilmore-Antipolo,26
+Betty Go-Belmonte-Recto,22
+Betty Go-Belmonte-Legarda,21
+Betty Go-Belmonte-Pureza,19
+Betty Go-Belmonte-V.Mapa,17
+Betty Go-Belmonte-J. Ruiz,16
+Betty Go-Belmonte-Gilmore,15
+Betty Go-Belmonte-Araneta Center-Cubao,15
+Betty Go-Belmonte-Anonas,16
+Betty Go-Belmonte-Katipunan,18
+Betty Go-Belmonte-Santolan,20
+Betty Go-Belmonte-Marikina-Pasig,22
+Betty Go-Belmonte-Antipolo,25
+Araneta Center-Cubao-Recto,23
+Araneta Center-Cubao-Legarda,22
+Araneta Center-Cubao-Pureza,20
+Araneta Center-Cubao-V.Mapa,19
+Araneta Center-Cubao-J. Ruiz,17
+Araneta Center-Cubao-Gilmore,16
+Araneta Center-Cubao-Betty Go-Belmonte,15
+Araneta Center-Cubao-Anonas,15
+Araneta Center-Cubao-Katipunan,16
+Araneta Center-Cubao-Santolan,19
+Araneta Center-Cubao-Marikina-Pasig,21
+Araneta Center-Cubao-Antipolo,23
+Anonas-Recto,25
+Anonas-Legarda,24
+Anonas-Pureza,22
+Anonas-V.Mapa,20
+Anonas-J. Ruiz,19
+Anonas-Gilmore,18
+Anonas-Betty Go-Belmonte,16
+Anonas-Araneta Center-Cubao,15
+Anonas-Katipunan,14
+Anonas-Santolan,17
+Anonas-Marikina-Pasig,19
+Anonas-Antipolo,22
+Katipunan-Recto,26
+Katipunan-Legarda,25
+Katipunan-Pureza,23
+Katipunan-V.Mapa,22
+Katipunan-J. Ruiz,20
+Katipunan-Gilmore,19
+Katipunan-Betty Go-Belmonte,18
+Katipunan-Araneta Center-Cubao,16
+Katipunan-Anonas,14
+Katipunan-Santolan,16
+Katipunan-Marikina-Pasig,18
+Katipunan-Antipolo,21
+Santolan-Recto,28
+Santolan-Legarda,27
+Santolan-Pureza,26
+Santolan-V.Mapa,24
+Santolan-J. Ruiz,22
+Santolan-Gilmore,21
+Santolan-Betty Go-Belmonte,20
+Santolan-Araneta Center-Cubao,19
+Santolan-Anonas,17
+Santolan-Katipunan,16
+Santolan-Marikina-Pasig,15
+Santolan-Antipolo,18
+Marikina-Pasig-Recto,31
+Marikina-Pasig-Legarda,29
+Marikina-Pasig-Pureza,28
+Marikina-Pasig-V.Mapa,26
+Marikina-Pasig-J. Ruiz,24
+Marikina-Pasig-Gilmore,23
+Marikina-Pasig-Betty Go-Belmonte,22
+Marikina-Pasig-Araneta Center-Cubao,21
+Marikina-Pasig-Anonas,19
+Marikina-Pasig-Katipunan,18
+Marikina-Pasig-Santolan,15
+Marikina-Pasig-Antipolo,16
+Antipolo-Recto,33
+Antipolo-Legarda,32
+Antipolo-Pureza,30
+Antipolo-V.Mapa,29
+Antipolo-J. Ruiz,27
+Antipolo-Gilmore,26
+Antipolo-Betty Go-Belmonte,25
+Antipolo-Araneta Center-Cubao,23
+Antipolo-Anonas,22
+Antipolo-Katipunan,21
+Antipolo-Santolan,18
+Antipolo-Marikina-Pasig,16

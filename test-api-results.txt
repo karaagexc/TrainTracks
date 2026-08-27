@@ -1,0 +1,72 @@
+﻿=== TrainSight API Access Diagnostic ===
+Time: 2026-03-30T01:07:27.763Z
+Token: [redacted]
+Client: [redacted]
+
+[1. Root (no auth)]
+  Status: 200 OK
+  Time: 335ms
+  Body: {"service":"TrainSight API"}
+
+
+[2. GET /api/stations (no auth)]
+  Status: 200 OK
+  Time: 192ms
+  Body: {"stations":[{"chainage":16605.02171368203,"code":"NAV-MRT3","door_side":"R","doorside":"R","lat":14.6523049,"line":"MRT-3","lng":121.0323066,"loading_status":"Unknown","name":"North Avenue","vehicle_type":1},{"chainage":15180.679087060262,"code":"QAV-MRT3","door_side":"R","doorside":"R","lat":14.64
+
+[3. GET /api/fleetSize (Bearer)]
+  Status: 200 OK
+  Time: 74ms
+  Body: {"LRT-1":20,"LRT-2":10,"MRT-3":10,"MRT-7":6,"PNR":4}
+
+
+[4. POST /api/public/trains (api_key+user_id)]
+  Status: 401 UNAUTHORIZED
+  Time: 70ms
+  Body: {"error":"Unauthorized"}
+
+
+[5. POST /api/public/trains (api_key only, no Bearer)]
+  Status: 401 UNAUTHORIZED
+  Time: 67ms
+  Body: {"error":"Unauthorized"}
+
+
+[6. POST /api/data/trains (documented)]
+  Status: 404 NOT FOUND
+  Time: 76ms
+  Body: <!doctype html>
+<html lang=en>
+<title>404 Not Found</title>
+<h1>Not Found</h1>
+<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>
+
+
+[7. POST /api/public/trains (token in body)]
+  Status: 401 UNAUTHORIZED
+  Time: 65ms
+  Body: {"error":"Unauthorized"}
+
+
+[8. POST /api/public/trains (empty)]
+  Status: 400 BAD REQUEST
+  Time: 60ms
+  Body: {"error":"No data"}
+
+
+[9. GET /api/public/trains]
+  Status: 405 METHOD NOT ALLOWED
+  Time: 65ms
+  Body: <!doctype html>
+<html lang=en>
+<title>405 Method Not Allowed</title>
+<h1>Method Not Allowed</h1>
+<p>The method is not allowed for the requested URL.</p>
+
+
+[10. GET /api/schedule_data]
+  Status: 200 OK
+  Time: 64ms
+  Body: {"fleet_sizes":{"LRT-1":20,"LRT-2":10,"MRT-3":10,"MRT-7":6,"PNR":4},"operating_hours":[{"end_time":"22:30","line":"LRT-1","operation_days":"Monday","origin_station":"DRS-LRT1","start_time":"04:30"},{"end_time":"22:30","line":"LRT-1","operation_days":"Tuesday","origin_station":"DRS-LRT1","start_time"
+
+=== Done ===

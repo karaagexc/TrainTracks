@@ -1,0 +1,32 @@
+"speed": 40.0,
+"direction": 1,
+"line_name": "LRT-1",
+"status": 1
+J;
+Response:
+{"status": "success"}
+Train Data
+POST /api/data/trains
+Get current train positions.
+Request Body:
+{
+"api_key": "valid-key",
+"user_id": "user-uuid"
+}
+Response:
+{
+"status": "success",
+"trains": [
+{
+"train_id": "uuid",
+"line": "LRT-1",
+"lat": 14.4500,
+"lng": 120.9700,
+"speed": "40.0 km/h",
+"status": "Live",
+"direction": "Southbound"
+}
+1
+I
+WebSocket Events
+Connection

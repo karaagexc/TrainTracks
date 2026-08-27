@@ -1,0 +1,29 @@
+Response:
+{"status": "success"}
+Error Codes:
+* 400: Invalid GPS data
++» 401: Missing client_id
++ 429: Rate limited (train already has 100+ users)
+POST /api/vl/gps/ingest
+Low-latency GPS ingestion endpoint (v1 API).
+Request Body:
+{
+"lat": 14.4500,
+"lng": 120.9700,
+"speed": 30.5,
+"client_id": "client-uuid",
+"vehicle_type": 1,
+"token": "auth-token",
+"is_authoritative"”: false
+}
+Response:
+{"status": "success"}
+Herald (Authoritative) Updates
+POST /api/herald
+Submit GPS data from authorized Herald devices (train-installed).
+Request Body:
+{
+"device_id": "H-e01",
+"token": "auth-token",
+"latitude": 14.4500,
+"longitude": 120.9700,

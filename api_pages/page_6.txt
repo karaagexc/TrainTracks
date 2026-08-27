@@ -1,0 +1,38 @@
+const socket = io('https://core.trainsight.app', {
+auth: { token: 'integration-token' }
+1s
+Events
+ingest_gps_vi
+Low-latency GPS ingestion via WebSocket.
+socket.emit('ingest_gps_v1', {
+lat: 14.4500,
+lng: 120.9700,
+speed: 30.5,
+device_id: ‘'device-uuid’,
+vehicle_type: 1,
+is_authoritative: false
+1s
+Train Object Schema
+{
+train_id: string, // Unique identifier
+location: { lat, lng }, // Current position
+line: string, // Line name (e.g., "LRT-1")
+chainage: number, // Distance along track in meters
+direction: number, // 1 or -1
+direction_name: string, // "Northbound", "Southbound", etc.
+heading: number, // Compass heading in degrees
+speed: string, // "40.08 km/h"
+status: string, // "Live", "Disrupted", "Arrived", etc.
+source: string, // "calculated", "herald", "schedule"
+is_disrupted: boolean, // Disruption flag
+is_dwelling: boolean, // Stopped at station
+next_station: string, // Next station code
+next_station_name: string, // Next station name
+eta_next_station: string, // "3 mins to Roosevelt”
+door_side: string, // "Left", "Right", "Both"
+occupancy_percent: number, // ©-100
+loading_status: string, // "Light", "Moderate", "Heavy"
+gps_user_count: number, // Number of GPS users on this train
+last_update: string, // "2:36 PM"
+timestamp: number // Unix timestamp
+}

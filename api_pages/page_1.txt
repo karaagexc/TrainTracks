@@ -1,0 +1,21 @@
+TrainSight API Documentation
+TrainSight is a real-time train tracking system that combines GPS data from multiple sources
+(crowdsourced, authoritative devices) with a schedule-based physics-aware simulation
+engine to provide accurate train positions and status information.
+Base URL
+https://core.trainsight.app
+Authentication
+Integration Tokens
+Most endpoints require a valid integration token. Include it in the request header:
+Authorization: Bearer <token>
+For WebSocket connections, pass the token in the auth object on connect.
+REST Endpoints
+Root
+GET /
+Returns API service information.
+Response:
+{
+"service": "TrainSight API"
+I)
+Stations
+GET /api/stations

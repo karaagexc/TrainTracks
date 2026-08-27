@@ -1,0 +1,29 @@
+uci /dapiy/>ouLliituulc_udaia
+Returns schedule data for frontend offline caching.
+Response:
+{
+"operating_hours": [...],
+"fleet_sizes": {"LRT-1": 20, "LRT-2": 10},
+"timetables": {...}
+}
+Fleet Size
+GET /api/fleetSize
+Returns current configured fleet sizes for all lines.
+Response:
+{
+"LRT-1": 20,
+"LRT-2": 10,
+"MRT-3": 10
+)
+GPS Reporting
+POST /api/report_gps
+Submit GPS data from mobile client (crowdsourced).
+Headers:
+* Content-Type: application/json
+Request Body:
+{
+"lat": 14.4500,
+"lng": 120.9700,
+"speed": 30.5,
+"client_id": "device-uuid",
+}

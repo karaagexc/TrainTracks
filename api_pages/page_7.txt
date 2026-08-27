@@ -1,0 +1,22 @@
+Data Sources
+Source Description Priority
+herald Train-installed GPS devices Highest
+calculated Crowdsourced GPS aggregation Medium
+schedule Simulated schedule-based trains =~ Lowest
+When real GPS data exists for a line, scheduled trains are suppressed to avoid duplication.
+Rate Limits
+* GPS reports: Rate limited when a train reaches 100 users
++ Crowdsourced updates timeout after 20 seconds of inactivity
+* Scheduled trains despawn after 5 minutes without updates
+Error Responses
+{
+"status": "error",
+"message": "Error description”
+}
+Common status codes:
+* 200: Success
++ 400: Bad Request
+* 401: Unauthorized
+* 403: Forbidden
++ 429: Rate Limited
+* 500: Server Frrar

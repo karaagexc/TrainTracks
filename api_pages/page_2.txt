@@ -1,0 +1,32 @@
+Returns list of all stations.
+Query Parameters (optional):
+» vehicle_type (int): Filter by vehicle type (1=train, 0=bus, 2=ferry)
+Response:
+{
+"stations": [
+{
+"code": "LRT-1-001",
+"name": "Baclaran",
+"line": "LRT-1",
+"lat": 14.4329,
+"lng": 120.9512,
+"chainage": ©,
+"vehicle_type": 1,
+"doorside": "Right"
+}
+1
+}
+Lines
+GET /api/lines
+Returns all transit lines with their geometry data.
+Query Parameters (optional):
++ vehicle_type (int): Filter by vehicle type
+Response:
+{
+"LRT-1": {
+"points": [[lat, lng], ...],
+"cum_dist": [@, 500, 1200, ...]
+}
+}
+Schedule Data
+AET Jana lerhadiil a AdAada

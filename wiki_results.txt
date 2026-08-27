@@ -1,0 +1,215 @@
+Station: Roosevelt LRT station
+Extract: Fernando Poe Jr. station, also known by its previous name Roosevelt station, is the current northern terminus of the Light Rail Transit Line 1 (LRT-1) system. It opened on October 22, 2010, as part of the LRT-1 North Extension Project, as Roosevelt (Tagalog: [ˈrusvɛlt, ˈrusbɛlt]) and got its current name on August 20, 2023, almost two years after the namesake avenue was officially renamed after the Filipino actor.
+Fernando Poe Jr. is one of the two LRT-1 stations serving Quezon City, the other being Balintawak.
+It is located along EDSA at the boundary of barangays Veterans Village and Ramon Magsaysay (Bago Bantay) in Quezon City, both of Projects 7 and 8, respectively. It links to Congressional Avenue and Fernando Poe Jr. Avenue.
+---
+Station: Balintawak LRT station
+Extract: Balintawak station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system located along EDSA at the boundary of barangays Balingasa, Unang Sigaw, and Apolonio Samson in Quezon City, Philippines. It opened on March 22, 2010 as part of the LRT-1 North Extension Project. The station serves passengers going to and from the northern parts of Luzon using the North Luzon Expressway.
+Balintawak is one of two LRT-1 stations serving Quezon City, with the other being Fernando Poe Jr. It is the second station for trains headed to Dr. Santos and the twenty-fourth station for trains headed to Fernando Poe Jr.
+The station is situated in front of the Balintawak Market, near the Quezon City–Caloocan boundary and the Balintawak Cloverleaf.
+---
+Station: Monumento LRT station
+Extract: Monumento station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in the southern portion of Caloocan. It is named after the most famous landmark of Caloocan, the Monumento Circle, which houses the Bonifacio Monument, a famous monument to Filipino revolutionary Andrés Bonifacio. It opened on May 12, 1985, when LRT-1 became fully operational. Being the northern terminus of LRT-1 until Balintawak was opened in 2010, it is called Monumento Terminal and historically as North Terminal.
+Monumento is located on Rizal Avenue in Grace Park West & Grace Park East, Caloocan. It is the third station for trains headed to Dr. Santos, the twenty-third station for trains headed to Fernando Poe Jr., and is one of the two LRT-1 stations in Caloocan, the other being 5th Avenue.
+LRTA has modified two tracks at Monumento leading to Balintawak, Fernando Poe Jr., and North Triangle Common stations.
+It underwent renovations in September 2017 and was relaunched on Febru
+---
+Station: 5th Avenue LRT station
+Extract: 5th Avenue station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Caloocan, Philippines. The station is situated on the intersection of Rizal Avenue Extension and 5th Avenue (C-3), after which the station is named, at the boundaries of Grace Park East and Grace Park West.
+5th Avenue station serves as the fourth station for LRT-1 trains headed to Dr. Santos, the twenty-second station for trains headed to Fernando Poe Jr., and is one of the two LRT-1 stations serving Caloocan, the other being Monumento station.
+---
+Station: R. Papa LRT station
+Extract: R. Papa station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Tondo, Manila, Philippines. It is situated on Rizal Avenue Extension in Barrio Obrero. The station is named after the nearby Ricardo Papa Street, which is in turn named after a former Manila police chief-turned-Commanding General of the Philippine Army. The station is the first station in Rizal Avenue Extension going north and the last in the city of Manila, located just next to the city's boundary with Caloocan.
+R. Papa station serves as the fifth station for LRT-1 trains headed to Dr. Santos and as the twenty-first station for trains headed to Fernando Poe Jr.
+---
+Station: Abad Santos LRT station
+Extract: Abad Santos station, also known as J. Abad Santos station, is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Manila, Philippines. The station serves Tondo and Santa Cruz, and is situated on Rizal Avenue. The station is named after the nearby Abad Santos Avenue, which in turn, is named after José Abad Santos, Chief Justice of the Supreme Court of the Philippines who was executed by the Japanese invading forces during World War II.
+Abad Santos station serves as the sixth station for LRT-1 trains headed to Dr. Santos and as the twentieth station for trains headed to Fernando Poe Jr.
+---
+Station: Blumentritt LRT station
+Extract: Blumentritt station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Manila, Philippines. The station is situated above Rizal Avenue, particularly at its intersections with Old Antipolo Street and Blumentritt Road, from which the station's name is derived. The latter is named to honor Bohemian professor Ferdinand Blumentritt, one of José Rizal's closest associates and a sympathizer of the Propaganda Movement.
+Blumentritt station serves as the seventh station for LRT-1 trains headed to Dr. Santos, and the nineteenth station for trains headed to Fernando Poe Jr. It is one of the six Line 1 stations serving Santa Cruz district, along with Abad Santos, Tayuman, Bambang, Doroteo Jose, and Carriedo.
+It is the second northernmost station on Rizal Avenue as the line shifts to Rizal Avenue Extension northwest of Abad Santos station.
+---
+Station: Tayuman LRT station
+Extract: Tayuman station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Manila, Philippines. The station serves Santa Cruz and is situated at the intersection of Rizal Avenue and Tayuman Street and is named after the latter.
+Tayuman station serves as the eighth station for LRT-1 trains headed to Dr. Santos, the eighteenth station for trains headed to Fernando Poe Jr., and is one of the five LRT-1 stations serving Santa Cruz district, the others being Blumentritt, Bambang, Doroteo Jose, and Carriedo.
+---
+Station: Bambang LRT station
+Extract: Bambang station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Santa Cruz, Manila. The station is situated on the intersection of Rizal Avenue and Bambang Street, where the station got its name.
+Bambang station serves as the ninth station for trains headed to Dr. Santos and the seventeenth station for trains headed to Fernando Poe Jr. It is notable for having a commercial hub for medical and laboratory supplies within its vicinity.
+---
+Station: Doroteo Jose LRT station
+Extract: Doroteo Jose station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Santa Cruz, Manila. The station is situated on Rizal Avenue and slightly past Doroteo Jose Street. Both the station and the street are named after Doroteo Jose, a Filipino who was arrested by Spanish authorities in 1898 for leading a movement against a corrupt archbishop.
+Doroteo Jose station is the second station of LRT-1 north of the Pasig River, after Carriedo station. It is the tenth station for trains headed to Dr. Santos and the sixteenth station for trains headed to Fernando Poe Jr.
+The station is near the Manila City Jail and the Fabella Memorial Hospital. Popular shopping centers such as the Isetann Cinerama Recto and the Odeon Terminal Mall are also nearby. Due to its position of being near the University Belt, the station is also close to educational institutions of the University Belt. It is one of the only stations on the line where commuters can transfer from o
+---
+Station: Carriedo LRT station
+Extract: Carriedo station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system along the district boundary of Santa Cruz and Quiapo in Manila.
+Carriedo is the first station north of the Pasig River. It is the fifteenth station for trains headed to Fernando Poe Jr. and the eleventh station for trains headed to Dr. Santos. It is named after Carriedo Street, which crosses beneath it and is itself named after Spanish philanthropist Francisco Carriedo y Pedero.
+It is one of the ten stations on the line to have its concourse area below the platform, the other nine being Dr. Santos, Ninoy Aquino Avenue, PITX, MIA Road, Redemptorist-Aseana, Baclaran, Central Terminal, Balintawak, and Fernando Poe Jr.
+---
+Station: Central Terminal LRT station
+Extract: Central Terminal, formerly and widely known as Arroceros station, is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Ermita, Manila. A popular name for the station is Arroceros due to its proximity to the Arroceros Forest Park; Arroceros is also the former name of Antonio Villegas Street, where the station is located.
+Central Terminal is the last station of LRT-1 south of the Pasig River and serves as the fourteenth station for trains headed to Fernando Poe Jr. and the twelfth station for trains headed to Dr. Santos. The station was named as such due to its initial central location in the line, having been the tenth station for trains headed to both Monumento and Baclaran, the line's former termini prior to the addition of the North and Cavite Extensions. Opened on December 1, 1984, as part of the line's initial section known as Taft Line (after Taft Avenue, where most of the section's stations are located), it was the line's initial northern te
+---
+Station: United Nations LRT station
+Extract: United Nations station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Ermita, Manila. Situated above the intersection of Taft Avenue and United Nations Avenue, the station is named after the latter.
+United Nations station is the thirteenth stop from both Dr. Santos and Fernando Poe Jr. stations, thus becoming the center of the entire line.
+---
+Station: Pedro Gil LRT station
+Extract: Pedro Gil station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Ermita District, City of Manila, Philippines. It is situated at the corner of Taft Avenue and Pedro Gil Street. The station takes its name from Pedro Gil Street, which used to be called Herran Street.
+Pedro Gil station is the twelfth station for trains headed to Fernando Poe Jr., and the fourteenth station for trains headed to Dr. Santos.
+---
+Station: Quirino LRT station
+Extract: Quirino station, also formerly known as President Quirino station, is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Malate, Manila Philippines. It is situated at the intersection of Taft Avenue, San Andres Street and Quirino Avenue. The station and Quirino Avenue are both named after former president Elpidio Quirino.
+Quirino station is the eleventh station for trains headed to Fernando Poe Jr., and the fifteenth station for trains headed to Dr. Santos.
+---
+Station: Vito Cruz LRT station
+Extract: Vito Cruz station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Malate, Manila. It is the first station going north and the last station going south to lie within Manila city bounds. It is also the tenth station for trains headed to Fernando Poe Jr. and the sixteenth station for trains headed to Dr. Santos. The station takes its name from the old name of the nearby Pablo Ocampo Street, which was named after Hermogenes Vito Cruz, a former alcalde mayor of Pineda (present-day Pasay) c. 1871.
+---
+Station: Gil Puyat LRT station
+Extract: Gil Puyat station, also colloquially known as Buendia station, is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Pasay, Philippines. It is situated above the intersection of Taft Avenue and Gil Puyat Avenue, where the station derived its name. The avenue itself is named after Gil Puyat, a former senator and statesman. The station was opened to the public on December 1, 1984, as part of the line's inaugural southern section, known as the Taft Line.
+Gil Puyat station is the ninth station for trains headed to Fernando Poe Jr., the seventeenth station for trains headed to Dr. Santos, and is one of the four Line 1 stations serving Pasay, the others are Libertad, EDSA and Baclaran.
+The station is a major transfer point for passengers bound for the Makati Central Business District.
+---
+Station: Libertad LRT station
+Extract: Libertad station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Pasay, Metro Manila, Philippines. It is situated at the intersection of Taft Avenue and Arnaiz Avenue. The station is named after the former Libertad (Spanish for "liberty") Street, now a part of Arnaiz Avenue. The name Libertad survives as an area name after the old street.
+Libertad station is the eighth station for trains headed to Fernando Poe Jr., the eighteenth station for trains headed to Dr. Santos, and is one of the four stations serving Pasay, the others are Gil Puyat, EDSA, and Baclaran.
+---
+Station: EDSA LRT station
+Extract: EDSA station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Pasay. The station is situated on the intersection of Taft Avenue and Epifanio de los Santos Avenue, better known as EDSA, one of Metro Manila's major thoroughfares. The station and the avenue are both named after Epifanio de los Santos, a noted historian.
+The station is the seventh station for trains headed to Fernando Poe Jr., the nineteenth station for trains headed to Dr. Santos, and is one of the four LRT-1 stations serving Pasay; the others are Gil Puyat, Libertad and Baclaran.
+---
+Station: Baclaran LRT station
+Extract: Baclaran station is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Pasay. Situated on the last stretches of Taft Avenue right at the border with Baclaran, Parañaque. The station is named after the famous shopping district of the same name, which is located on the borders of the cities of Pasay and Parañaque. Opened in 1984, the station served as the line's initial southern terminus, historically known as South Terminal, until Phase 1 of the Cavite Extension was opened in 2024.
+The station is the sixth station for trains headed to Fernando Poe Jr. and the twentieth station for trains headed to Dr. Santos. Baclaran is one of the four LRT-1 stations serving Pasay; the others are Gil Puyat, Libertad, and EDSA. The line's depot is located near the station.
+The terminal is near one of the country's most famous landmarks, the National Shrine of Our Mother of Perpetual Help, widely known as the Baclaran Church. It is also near numerous dry goods and fl
+---
+Station: Redemptorist LRT station
+Extract: Redemptorist–Aseana station, also known as Redemptorist station or  Aseana station, is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Parañaque. It is part of the Line 1 Cavite Extension Project, which was opened to the public on November 16, 2024. The station is located in Aseana City in Barangay Baclaran and is also named after the nearby Redemptorist Church, which is also known as the Baclaran Church.
+The station is the fifth station for trains headed to Fernando Poe Jr., the twenty-first station for trains headed to Dr. Santos and is one of the five LRT-1 stations in Parañaque; the others are MIA Road, PITX, Ninoy Aquino Avenue and Dr. Santos. The station is the northernmost of the LRT-1 Cavite Extension.
+---
+Station: MIA LRT station
+Extract: MIA Road station, also known as MIA station, is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Parañaque. It is part of the Line 1 Cavite Extension Project, which opened to the public on November 16, 2024. Situated at the intersection of Roxas Boulevard and Seaside Drive, which is the physical continuation of the adjacent NAIA Road, it serves Barangay Tambo and Entertainment City.
+The station is the fourth station for trains headed to Fernando Poe Jr., the twenty-second station for trains headed to Dr. Santos and is one of the five LRT-1 stations in Parañaque; the others are Redemptorist–Aseana, PITX, Ninoy Aquino Avenue, and Dr. Santos.
+---
+Station: PITX LRT station
+Extract: PITX station, also referred to as Asia World station, is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Parañaque. Named after the adjacent Parañaque Integrated Terminal Exchange (PITX), the station is part of the LRT-1 Cavite Extension Project, which was opened to the public on November 16, 2024. It is situated between the Manila–Cavite Expressway (CAVITEX) and Kennedy Road. It is the third station for trains headed to Fernando Poe Jr., the twenty-third station for trains headed to Dr. Santos, and is one of the five LRT-1 stations in Parañaque; the others are Redemptorist–Aseana, MIA Road, Ninoy Aquino Avenue, and Dr. Santos.
+---
+Station: Ninoy Aquino LRT station
+Extract: Ninoy Aquino Avenue station, also simply known as Ninoy Aquino station or N. Aquino station, is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Santo Niño, Parañaque. The station is part of the Line 1 Cavite Extension Project, which opened to the public on November 16, 2024. The station is built on the east bank of the Parañaque River and is above its namesake, Ninoy Aquino Avenue, which is in turn named after Benigno "Ninoy" Aquino Jr., a former senator who was assassinated at the nearby airport in 1983.
+The station is the second station for trains headed to Fernando Poe Jr., the twenty-fourth station for trains headed to Dr. Santos, and is one of the five LRT-1 stations in Parañaque; the others are Redemptorist-Aseana, MIA Road, PITX and Dr. Santos.
+---
+Station: Dr. Santos LRT station
+Extract: Dr. Santos station, also known as Sucat station or Dr. Santos Avenue station, is an elevated Light Rail Transit (LRT) station located on the LRT Line 1 (LRT-1) system in Parañaque. The station is part of Phase 1 of the Line 1 Cavite Extension Project, which opened to the public on November 16, 2024. It is situated in between Dr. Santos Avenue, CAVITEX–C-5 Link, and C-5 Extension, a few hundred meters behind SM City Sucat. The station is named after Dr. Santos Avenue and, in turn, Arcadio Santos, a former governor of Rizal who was a native of the present-day city that was part of the province. It is the current southern terminus of the line, pending the opening of the extension's Phase 2 towards Niog in Bacoor expected in 2031.
+The station is one of the five LRT-1 stations in Parañaque; the others are Redemptorist–Aseana, MIA Road, PITX, and Ninoy Aquino Avenue.
+---
+Station: Recto LRT station
+Extract: Recto station is the current western terminus of the Light Rail Transit Line 2 (LRT-2) system. It is situated on Recto Avenue at the district boundary of Santa Cruz and Quiapo, Manila.
+It shall be replaced by Pier 4 as the future western terminus of the LRT-2.
+---
+Station: Legarda LRT station
+Extract: Legarda station is an elevated Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in Sampaloc, Manila. It is named after Legarda Street, where the station sits above it. The street in turn is named after Benito Legarda, a Filipino legislator.
+The station is the second station for trains headed to Antipolo and the twelfth station for trains headed to Recto. It first commenced operations on April 5, 2004 and served as the western terminus of the line until Recto station opened on October 29, 2004.
+It is regarded as one of the busiest stations of the line.
+---
+Station: Pureza LRT station
+Extract: Pureza station is an elevated Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in Santa Mesa, Manila. It is named because of its location near Pureza Street. The name originated from the Spanish word for "purity".
+The station is the third station for trains headed to Antipolo and the eleventh station for trains headed to Recto.
+---
+Station: V. Mapa LRT station
+Extract: V. Mapa station is an elevated Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in Sampaloc, Manila. It is one of the four stations in the line with a reserve track nearby (in front of the UERMMC) together with Santolan, Anonas and Araneta Center–Cubao. The station during its inception was formerly called as G. Araneta station, after the nearby Gregorio Araneta Avenue, but was renamed into the current name due to the minor realignment of some stations (the other being Betty Go-Belmonte) that has caused the change of proximity to the Victorino Mapa Street. The station serves the areas of Santa Mesa, Manila, Quezon City, and San Juan. The station is situated at Ramon Magsaysay Boulevard, near its intersection with Victorino Mapa Street in Santa Mesa, Manila.
+The station is the tenth station for trains headed to Recto and the fourth station for trains headed to Antipolo. The station has a standard layout, with a concourse level and a platform level. The concourse 
+---
+Station: J. Ruiz LRT station
+Extract: J. Ruiz station is an elevated Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in San Juan. The station is named from its location on J. Ruiz Street.
+J. Ruiz station is the fifth station for trains headed to Antipolo and the ninth station for trains headed to Recto. It is the only station in San Juan and is close to the borders of Quezon City before entering Manila.
+It is named after Juan Ruiz, a Katipunero who took part in the siege of El Polvorin, where the Pinaglabanan Shrine is located. Opened on April 5, 2004, the station was part of the Phase II development of LRT-2 together with the Betty Go-Belmonte, Gilmore, V. Mapa, Pureza and Legarda stations.
+---
+Station: Gilmore LRT station
+Extract: Gilmore station is an elevated Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in Mariana, Quezon City. It is named after the nearby Gilmore Avenue, which in turn is named for Eugene Allen Gilmore, Vice Governor-General of the Philippines from 1922 to 1929 who twice served as acting Governor-General of the Philippines.
+The station is the sixth station for trains headed to Antipolo and the eighth station for trains headed to Recto.
+---
+Station: Betty Go-Belmonte LRT station
+Extract: Betty Go-Belmonte station is an elevated Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in Mariana, Quezon City. 
+The station during its inception was formerly called as Boston station, after the adjacent street of the same name, but was renamed into the current name due to the minor realignment of some stations (the other being V. Mapa) that has caused the change of proximity to the Betty Go-Belmonte Street. It is named after Betty Go-Belmonte, the founder of The Philippine Star and wife of House Speaker Feliciano Belmonte Jr..
+The station is the seventh station for trains headed to both Antipolo and Recto stations. It is considered to be one of the least busiest stations on the line.
+---
+Station: Araneta Center-Cubao LRT station
+Extract: Araneta Center–Cubao station is an elevated Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in Cubao, Quezon City. It is named after the old name of Araneta City, a nearby mixed-use development.
+The station is the eighth station for trains headed to Antipolo and the sixth station for trains headed to Recto.
+The station layout is composed of three platforms: The two main platforms serve the entire system (eastbound and westbound) and an extra platform serves as a terminus. The extra platform, currently unused, is found under the main platforms where the concourse area can also be found.
+---
+Station: Anonas LRT station
+Extract: Anonas station is an elevated Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in Cubao, Quezon City. It is named because of its location near Anonas Street.
+The station is the ninth station for trains headed to Antipolo and the fifth station for trains headed to Recto.
+---
+Station: Katipunan LRT station
+Extract: Katipunan station is an underground Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in Loyola Heights, Quezon City. It is the only underground station in the entire line. The station is named because of its location on Katipunan Avenue, one of Quezon City's main thoroughfares. The avenue is in turn named after the Katipunan revolutionary society.
+Katipunan station serves as the tenth station for trains headed to Antipolo and the fourth station for trains headed to Recto.
+This station should not be confused with the planned Katipunan station of the Metro Manila Subway Line 9, to be built on Camp Aguinaldo property near the other end of Katipunan Avenue, also in Quezon City.
+The station was temporarily closed due to a fire which affected two rectifiers located between the Katipunan and Anonas stations on October 3, 2019. The station was reopened on January 22, 2021 after repairs to the rectifiers were completed.
+---
+Station: Santolan LRT station
+Extract: Santolan station is an elevated Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in Santolan, Pasig, near its boundary with Calumpang, Marikina. It is situated along the Marikina–Infanta Highway. During the planning stages of the line, the station was initially referred to as M. A. Roxas, honoring him as the first President of the Third Republic, which achieved independence from the United States in 1946, because of its closeness to M. A. Roxas Street in Marikina.
+Opened in 2003, the station served as the eastern terminus of the line until LRT-2 East Extension was opened in 2021. It currently serves as the eleventh station for trains headed to Antipolo and the third station for trains headed to Recto. The Santolan Depot, where the trains of the line are cleaned and maintained, is also near the station, as well as the line's Operations Control Center (OCC), both located in Pasig.
+This is the only station on this line with an island platform.
+---
+Station: Marikina LRT station
+Extract: Marikina–Pasig station is an elevated Light Rail Transit (LRT) station located on the LRT Line 2 (LRT-2) system in San Roque, Marikina, near the tripoint boundary of Pasig, Metro Manila and Cainta, Rizal. The station is situated on the stretch of Marikina–Infanta Highway near the intersection of Gil Fernando Avenue–Felix Avenue and is named after the cities of Marikina and Pasig which the station straddles between.
+Marikina–Pasig station serves as the twelfth station for trains headed to Antipolo and the second station for trains headed to Recto. This is the line's last station in Metro Manila from Recto station before heading to the line's eastern terminus at Antipolo.
+---
+Station: Antipolo LRT station
+Extract: Antipolo station, formerly known as Masinag station, is the current eastern terminus of the Light Rail Transit Line 2 (LRT-2) system. It opened on July 5, 2021 and is the line's easternmost station, situated on the stretch of Marikina–Infanta Highway near the intersection of Sumulong Highway in Antipolo, Rizal. It is the first LRT station outside Metro Manila to be operational.
+---
+Station: North Avenue MRT station
+Extract: North Avenue station is an elevated Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system in Diliman, Quezon City. Located on the Epifanio de los Santos Avenue (EDSA), it is named after the adjacent North Avenue, which intersects the highway. It is the current northern terminus of the line.
+The North Avenue Depot, an underground depot where the trains of the line are kept and maintained, is located near the station. The elevated tracks terminate abruptly beyond the station, but there is sufficient room for a terminating train to leave the station and stop before switching to the opposite track and reentering the station to begin the journey south.
+---
+Station: Quezon Avenue MRT station
+Extract: Quezon Avenue station is an elevated Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system in Diliman, Quezon City. It is named after Quezon Avenue, one of the major thoroughfares of the city.
+The station is the second station for trains headed to Taft Avenue and the twelfth station for trains headed to North Avenue.
+---
+Station: GMA-Kamuning MRT station
+Extract: GMA–Kamuning station, also known as Kamuning station, is an elevated Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system at the boundary of barangays South Triangle and Pinyahan in the Scout Area of Diliman, Quezon City. The station derives its name from the nearby barangay of Kamuning and the road sharing the same name, as well as, apparently, the adjacent GMA Network Center, which serves as the headquarters of GMA Network Inc.
+The station is the third station for trains headed towards Taft Avenue and the eleventh for trains headed towards North Avenue.
+---
+Station: Santolan-Annapolis MRT station
+Extract: Santolan–Annapolis station, also simply known as Santolan station, is an elevated Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system in Quezon City. It is the ninth station for trains headed to North Avenue and the fifth station for trains headed to Taft Avenue. The station is named after the streets it is situated in between Santolan Road (officially known as Bonny Serrano Avenue) and Annapolis Street, and near the eastern San Juan–Quezon City boundary.
+---
+Station: Ortigas MRT station
+Extract: Ortigas station is an elevated Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system in the Mandaluyong portion of Ortigas Center (under barangay Wack-Wack Greenhills). The station is named after the center, as well as the nearby Ortigas Avenue.
+Ortigas station is the sixth station for trains headed to Taft Avenue and the eighth station for trains headed to North Avenue. It is one of three stations to be situated in Mandaluyong and the northernmost one, near the boundary with Quezon City. The station is notorious for having a narrow sidewalk on its east exit, which forces pedestrians to squeeze through the sidewalk and its fencing along EDSA due to legal right-of-way issues with the Asian Development Bank and its headquarters next to the station itself.
+---
+Station: Shaw Boulevard MRT station
+Extract: Shaw Boulevard station is an elevated Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system in the Mandaluyong portion of Ortigas Center. The station is named after Shaw Boulevard, since the station lies directly above the boulevard. Being at the center of the whole line, many commuters regard Shaw Boulevard station as the "central terminal" of the line.
+The station is the seventh station for trains headed to Taft Avenue and North Avenue. It is one of six stations on the line where passengers can catch a train going in the opposite direction without paying a new fare due to the station's layout; the other five are Araneta Center-Cubao, Boni, Buendia, Ayala, and Taft Avenue. Excluding Araneta Center-Cubao station, it is also one of five stations on the line with its concourse level located above the platform.
+---
+Station: Boni MRT station
+Extract: Boni station is a Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system in Mandaluyong. It is named so due to its proximity to Boni Avenue, which is in turn named after the nickname of Bonifacio Javier, a World War II guerrilla leader and former mayor of Mandaluyong.
+ It has several restaurants and shops that surround the station, including a public market located across the train station.
+It is the eighth station for trains headed to Taft Avenue and the sixth station for trains headed to North Avenue. It is the last station in Mandaluyong, before crossing over to Makati and one of five stations on the line where passengers can catch a train going in the opposite direction without paying a new fare due to the station's layout. The other four stations are Araneta Center-Cubao, Shaw Boulevard, Buendia, Ayala, and Taft Avenue. Excluding Araneta Center-Cubao station, it is also one of four stations on the line with its concourse level located above the platform.
+---
+Station: Guadalupe MRT station
+Extract: Guadalupe station is an elevated Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system in Makati. It is named because of its location between the barangays of Guadalupe Nuevo and Guadalupe Viejo, both are in turn named after Our Lady of Guadalupe.
+The station is the ninth station for trains headed to Taft Avenue and the fifth station for trains headed to North Avenue. It is the last station of the line south of the Pasig River and before crossing over to Mandaluyong.
+---
+Station: Buendia MRT station
+Extract: Buendia station is an underground Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system in Makati. It is one of two underground stations that can be found on the line, the other being Ayala. The station lies near the EDSA–Kalayaan Flyover and Gil Puyat Avenue (Buendia Avenue; hence the current one was supposed to be the station's name) in Makati.
+It is the tenth station for trains headed to Taft Avenue and the fourth station for trains headed to North Avenue. It is the second to the last station south of the Pasig River and is also the last underground station in the line before the line goes above ground at Guadalupe station. It is one of five stations on the line where passengers can catch a train going in the opposite direction without paying a new fare due to the station's layout. The other four stations are Araneta Center–Cubao, Shaw Boulevard, Boni, Ayala, and Taft Avenue. Excluding Araneta Center–Cubao station, it is also one of four stations on the line with
+---
+Station: Ayala MRT station
+Extract: Ayala station, also known as Ayala Avenue station and Ayala Center station, is an underground Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system in Makati. It is one of two underground stations that can be found on the line, the other being Buendia. The station is located in Makati and is named so due to its proximity to two places bearing the Ayala name: Ayala Center and Ayala Avenue.
+The station is the eleventh station for trains headed to Taft Avenue and the third station for trains headed to North Avenue. The most recognizable landmark near the station is Ayala Center, one of the most popular shopping centers in the Philippines. It is one of two stations that are considered within the Makati Central Business District (the other being Buendia). 
+It is one of six stations on the line where passengers can catch a train going in the opposite direction without paying a new fare due to the station's layout. The other five stations are Araneta Center-Cubao, Shaw Bou
+---
+Station: Magallanes MRT station
+Extract: Magallanes station is an elevated Metro Rail Transit (MRT) station located on the MRT Line 3 (MRT-3) system in Makati. The station is named after barangay Magallanes of Makati, which in turn is named after Ferdinand Magellan. Although the station is named after Magallanes, it also serves passengers from Kayamanan-C and barangays Dasmariñas, Pio del Pilar, and San Lorenzo in Makati, and those from Taguig.
+The station is the twelfth station for trains headed to Taft Avenue and the second station for trains headed to North Avenue. It is the last station in Makati before it crosses over to Pasay.
+---
+Station: Taft Avenue MRT station
+Extract: Taft Avenue station is the southern terminus of the Metro Rail Transit Line 3 (MRT-3) system located in Pasay. It is situated at the intersection of Epifanio de los Santos Avenue (EDSA), one of Metro Manila's major thoroughfares, and Taft Avenue, usually referred to as Pasay Rotonda or EDSA-Taft. The station is named after Taft Avenue.
+It is one of five stations on the line where passengers can catch a train going in the opposite direction without paying a new fare due to the station's layout. The other four stations are Araneta Center–Cubao, Shaw Boulevard, Boni, Buendia, and Ayala. Excluding Araneta Center–Cubao station, it is also one of four stations on the line with its concourse level located above the platform. However, crowd control measures at the station currently discourage passengers from switching trains at the platform level.
+The station's location as a terminus has helped create many businesses in the area, from hotels and motels to restaurants and shops, with a good maj
+---

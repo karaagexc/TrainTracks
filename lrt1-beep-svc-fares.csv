@@ -1,0 +1,601 @@
+Route,Fare
+Dr. Santos-Ninoy Aquino,16
+Dr. Santos-PITX,20
+Dr. Santos-MIA Road,22
+Dr. Santos-Redemptorist-Aseana,23
+Dr. Santos-Baclaran,26
+Dr. Santos-EDSA,27
+Dr. Santos-Libertad,28
+Dr. Santos-Gil Puyat,29
+Dr. Santos-Vito Cruz,31
+Dr. Santos-Quirino,32
+Dr. Santos-Pedro Gil,33
+Dr. Santos-UN Avenue,34
+Dr. Santos-Central,36
+Dr. Santos-Carriedo,37
+Dr. Santos-D. Jose,38
+Dr. Santos-Bambang,39
+Dr. Santos-Tayuman,40
+Dr. Santos-Blumentritt,41
+Dr. Santos-Abad Santos,42
+Dr. Santos-R. Papa,43
+Dr. Santos-5th Avenue,45
+Dr. Santos-Monumento,46
+Dr. Santos-Balintawak,49
+Dr. Santos-Fernando Poe Jr.,52
+Ninoy Aquino-Dr. Santos,19
+Ninoy Aquino-PITX,18
+Ninoy Aquino-MIA Road,20
+Ninoy Aquino-Redemptorist-Aseana,21
+Ninoy Aquino-Baclaran,23
+Ninoy Aquino-EDSA,24
+Ninoy Aquino-Libertad,26
+Ninoy Aquino-Gil Puyat,27
+Ninoy Aquino-Vito Cruz,28
+Ninoy Aquino-Quirino,29
+Ninoy Aquino-Pedro Gil,31
+Ninoy Aquino-UN Avenue,32
+Ninoy Aquino-Central,33
+Ninoy Aquino-Carriedo,35
+Ninoy Aquino-D. Jose,36
+Ninoy Aquino-Bambang,36
+Ninoy Aquino-Tayuman,37
+Ninoy Aquino-Blumentritt,38
+Ninoy Aquino-Abad Santos,40
+Ninoy Aquino-R. Papa,41
+Ninoy Aquino-5th Avenue,42
+Ninoy Aquino-Monumento,44
+Ninoy Aquino-Balintawak,47
+Ninoy Aquino-Fernando Poe Jr.,50
+PITX-Dr. Santos,20
+PITX-Ninoy Aquino,18
+PITX-MIA Road,16
+PITX-Redemptorist-Aseana,19
+PITX-Baclaran,22
+PITX-EDSA,22
+PITX-Libertad,24
+PITX-Gil Puyat,25
+PITX-Vito Cruz,27
+PITX-Quirino,28
+PITX-Pedro Gil,29
+PITX-UN Avenue,30
+PITX-Central,32
+PITX-Carriedo,33
+PITX-D. Jose,34
+PITX-Bambang,35
+PITX-Tayuman,36
+PITX-Blumentritt,37
+PITX-Abad Santos,38
+PITX-R. Papa,39
+PITX-5th Avenue,40
+PITX-Monumento,42
+PITX-Balintawak,45
+PITX-Fernando Poe Jr.,48
+MIA Road-Dr. Santos,22
+MIA Road-Ninoy Aquino,20
+MIA Road-PITX,18
+MIA Road-Redemptorist-Aseana,17
+MIA Road-Baclaran,20
+MIA Road-EDSA,20
+MIA Road-Libertad,22
+MIA Road-Gil Puyat,23
+MIA Road-Vito Cruz,25
+MIA Road-Quirino,26
+MIA Road-Pedro Gil,27
+MIA Road-UN Avenue,28
+MIA Road-Central,30
+MIA Road-Carriedo,31
+MIA Road-D. Jose,32
+MIA Road-Bambang,33
+MIA Road-Tayuman,34
+MIA Road-Blumentritt,35
+MIA Road-Abad Santos,36
+MIA Road-R. Papa,37
+MIA Road-5th Avenue,38
+MIA Road-Monumento,40
+MIA Road-Balintawak,43
+MIA Road-Fernando Poe Jr.,46
+Redemptorist-Aseana-Dr. Santos,23
+Redemptorist-Aseana-Ninoy Aquino,21
+Redemptorist-Aseana-PITX,19
+Redemptorist-Aseana-MIA Road,17
+Redemptorist-Aseana-Baclaran,18
+Redemptorist-Aseana-EDSA,19
+Redemptorist-Aseana-Libertad,21
+Redemptorist-Aseana-Gil Puyat,22
+Redemptorist-Aseana-Vito Cruz,23
+Redemptorist-Aseana-Quirino,25
+Redemptorist-Aseana-Pedro Gil,26
+Redemptorist-Aseana-UN Avenue,27
+Redemptorist-Aseana-Central,29
+Redemptorist-Aseana-Carriedo,30
+Redemptorist-Aseana-D. Jose,31
+Redemptorist-Aseana-Bambang,32
+Redemptorist-Aseana-Tayuman,33
+Redemptorist-Aseana-Blumentritt,34
+Redemptorist-Aseana-Abad Santos,35
+Redemptorist-Aseana-R. Papa,36
+Redemptorist-Aseana-5th Avenue,37
+Redemptorist-Aseana-Monumento,39
+Redemptorist-Aseana-Balintawak,42
+Redemptorist-Aseana-Fernando Poe Jr.,45
+Baclaran-Dr. Santos,26
+Baclaran-Ninoy Aquino,23
+Baclaran-PITX,22
+Baclaran-MIA Road,20
+Baclaran-Redemptorist-Aseana,18
+Baclaran-EDSA,17
+Baclaran-Libertad,19
+Baclaran-Gil Puyat,20
+Baclaran-Vito Cruz,21
+Baclaran-Quirino,22
+Baclaran-Pedro Gil,24
+Baclaran-UN Avenue,25
+Baclaran-Central,27
+Baclaran-Carriedo,28
+Baclaran-D. Jose,29
+Baclaran-Bambang,30
+Baclaran-Tayuman,30
+Baclaran-Blumentritt,31
+Baclaran-Abad Santos,33
+Baclaran-R. Papa,34
+Baclaran-5th Avenue,35
+Baclaran-Monumento,37
+Baclaran-Balintawak,40
+Baclaran-Fernando Poe Jr.,43
+EDSA-Dr. Santos,27
+EDSA-Ninoy Aquino,24
+EDSA-PITX,22
+EDSA-MIA Road,20
+EDSA-Redemptorist-Aseana,19
+EDSA-Baclaran,17
+EDSA-Libertad,16
+EDSA-Gil Puyat,18
+EDSA-Vito Cruz,19
+EDSA-Quirino,20
+EDSA-Pedro Gil,22
+EDSA-UN Avenue,23
+EDSA-Central,24
+EDSA-Carriedo,26
+EDSA-D. Jose,27
+EDSA-Bambang,28
+EDSA-Tayuman,29
+EDSA-Blumentritt,30
+EDSA-Abad Santos,31
+EDSA-R. Papa,32
+EDSA-5th Avenue,33
+EDSA-Monumento,34
+EDSA-Balintawak,36
+EDSA-Fernando Poe Jr.,39
+Libertad-Dr. Santos,28
+Libertad-Ninoy Aquino,26
+Libertad-PITX,24
+Libertad-MIA Road,22
+Libertad-Redemptorist-Aseana,21
+Libertad-Baclaran,19
+Libertad-EDSA,16
+Libertad-Gil Puyat,17
+Libertad-Vito Cruz,19
+Libertad-Quirino,20
+Libertad-Pedro Gil,21
+Libertad-UN Avenue,22
+Libertad-Central,24
+Libertad-Carriedo,25
+Libertad-D. Jose,26
+Libertad-Bambang,27
+Libertad-Tayuman,28
+Libertad-Blumentritt,29
+Libertad-Abad Santos,30
+Libertad-R. Papa,31
+Libertad-5th Avenue,33
+Libertad-Monumento,34
+Libertad-Balintawak,38
+Libertad-Fernando Poe Jr.,40
+Gil Puyat-Dr. Santos,29
+Gil Puyat-Ninoy Aquino,27
+Gil Puyat-PITX,25
+Gil Puyat-MIA Road,23
+Gil Puyat-Redemptorist-Aseana,22
+Gil Puyat-Baclaran,20
+Gil Puyat-EDSA,19
+Gil Puyat-Libertad,17
+Gil Puyat-Vito Cruz,16
+Gil Puyat-Quirino,18
+Gil Puyat-Pedro Gil,19
+Gil Puyat-UN Avenue,20
+Gil Puyat-Central,21
+Gil Puyat-Carriedo,23
+Gil Puyat-D. Jose,24
+Gil Puyat-Bambang,25
+Gil Puyat-Tayuman,26
+Gil Puyat-Blumentritt,27
+Gil Puyat-Abad Santos,28
+Gil Puyat-R. Papa,29
+Gil Puyat-5th Avenue,30
+Gil Puyat-Monumento,32
+Gil Puyat-Balintawak,33
+Gil Puyat-Fernando Poe Jr.,37
+Vito Cruz-Dr. Santos,31
+Vito Cruz-Ninoy Aquino,28
+Vito Cruz-PITX,27
+Vito Cruz-MIA Road,25
+Vito Cruz-Redemptorist-Aseana,23
+Vito Cruz-Baclaran,21
+Vito Cruz-EDSA,20
+Vito Cruz-Libertad,19
+Vito Cruz-Gil Puyat,18
+Vito Cruz-Quirino,16
+Vito Cruz-Pedro Gil,17
+Vito Cruz-UN Avenue,19
+Vito Cruz-Central,20
+Vito Cruz-Carriedo,22
+Vito Cruz-D. Jose,23
+Vito Cruz-Bambang,24
+Vito Cruz-Tayuman,25
+Vito Cruz-Blumentritt,25
+Vito Cruz-Abad Santos,26
+Vito Cruz-R. Papa,28
+Vito Cruz-5th Avenue,29
+Vito Cruz-Monumento,30
+Vito Cruz-Balintawak,32
+Vito Cruz-Fernando Poe Jr.,35
+Quirino-Dr. Santos,32
+Quirino-Ninoy Aquino,29
+Quirino-PITX,28
+Quirino-MIA Road,26
+Quirino-Redemptorist-Aseana,25
+Quirino-Baclaran,22
+Quirino-EDSA,22
+Quirino-Libertad,20
+Quirino-Gil Puyat,19
+Quirino-Vito Cruz,17
+Quirino-Pedro Gil,16
+Quirino-UN Avenue,17
+Quirino-Central,19
+Quirino-Carriedo,20
+Quirino-D. Jose,21
+Quirino-Bambang,22
+Quirino-Tayuman,23
+Quirino-Blumentritt,24
+Quirino-Abad Santos,25
+Quirino-R. Papa,27
+Quirino-5th Avenue,28
+Quirino-Monumento,29
+Quirino-Balintawak,31
+Quirino-Fernando Poe Jr.,34
+Pedro Gil-Dr. Santos,33
+Pedro Gil-Ninoy Aquino,31
+Pedro Gil-PITX,29
+Pedro Gil-MIA Road,27
+Pedro Gil-Redemptorist-Aseana,26
+Pedro Gil-Baclaran,24
+Pedro Gil-EDSA,23
+Pedro Gil-Libertad,21
+Pedro Gil-Gil Puyat,20
+Pedro Gil-Vito Cruz,19
+Pedro Gil-Quirino,17
+Pedro Gil-UN Avenue,16
+Pedro Gil-Central,17
+Pedro Gil-Carriedo,19
+Pedro Gil-D. Jose,20
+Pedro Gil-Bambang,21
+Pedro Gil-Tayuman,22
+Pedro Gil-Blumentritt,23
+Pedro Gil-Abad Santos,24
+Pedro Gil-R. Papa,25
+Pedro Gil-5th Avenue,26
+Pedro Gil-Monumento,28
+Pedro Gil-Balintawak,29
+Pedro Gil-Fernando Poe Jr.,33
+UN Avenue-Dr. Santos,34
+UN Avenue-Ninoy Aquino,32
+UN Avenue-PITX,30
+UN Avenue-MIA Road,28
+UN Avenue-Redemptorist-Aseana,27
+UN Avenue-Baclaran,25
+UN Avenue-EDSA,24
+UN Avenue-Libertad,22
+UN Avenue-Gil Puyat,21
+UN Avenue-Vito Cruz,20
+UN Avenue-Quirino,19
+UN Avenue-Pedro Gil,17
+UN Avenue-Central,16
+UN Avenue-Carriedo,18
+UN Avenue-D. Jose,19
+UN Avenue-Bambang,20
+UN Avenue-Tayuman,21
+UN Avenue-Blumentritt,22
+UN Avenue-Abad Santos,23
+UN Avenue-R. Papa,24
+UN Avenue-5th Avenue,25
+UN Avenue-Monumento,27
+UN Avenue-Balintawak,28
+UN Avenue-Fernando Poe Jr.,32
+Central-Dr. Santos,36
+Central-Ninoy Aquino,33
+Central-PITX,32
+Central-MIA Road,30
+Central-Redemptorist-Aseana,29
+Central-Baclaran,27
+Central-EDSA,26
+Central-Libertad,24
+Central-Gil Puyat,23
+Central-Vito Cruz,22
+Central-Quirino,20
+Central-Pedro Gil,19
+Central-UN Avenue,18
+Central-Carriedo,16
+Central-D. Jose,17
+Central-Bambang,18
+Central-Tayuman,19
+Central-Blumentritt,20
+Central-Abad Santos,21
+Central-R. Papa,23
+Central-5th Avenue,23
+Central-Monumento,25
+Central-Balintawak,27
+Central-Fernando Poe Jr.,30
+Carriedo-Dr. Santos,37
+Carriedo-Ninoy Aquino,35
+Carriedo-PITX,33
+Carriedo-MIA Road,31
+Carriedo-Redemptorist-Aseana,30
+Carriedo-Baclaran,28
+Carriedo-EDSA,27
+Carriedo-Libertad,25
+Carriedo-Gil Puyat,24
+Carriedo-Vito Cruz,23
+Carriedo-Quirino,21
+Carriedo-Pedro Gil,20
+Carriedo-UN Avenue,19
+Carriedo-Central,17
+Carriedo-D. Jose,16
+Carriedo-Bambang,17
+Carriedo-Tayuman,18
+Carriedo-Blumentritt,19
+Carriedo-Abad Santos,20
+Carriedo-R. Papa,21
+Carriedo-5th Avenue,22
+Carriedo-Monumento,24
+Carriedo-Balintawak,25
+Carriedo-Fernando Poe Jr.,29
+D. Jose-Dr. Santos,38
+D. Jose-Ninoy Aquino,36
+D. Jose-PITX,34
+D. Jose-MIA Road,32
+D. Jose-Redemptorist-Aseana,31
+D. Jose-Baclaran,29
+D. Jose-EDSA,28
+D. Jose-Libertad,26
+D. Jose-Gil Puyat,25
+D. Jose-Vito Cruz,24
+D. Jose-Quirino,22
+D. Jose-Pedro Gil,21
+D. Jose-UN Avenue,20
+D. Jose-Central,18
+D. Jose-Carriedo,17
+D. Jose-Bambang,16
+D. Jose-Tayuman,17
+D. Jose-Blumentritt,18
+D. Jose-Abad Santos,19
+D. Jose-R. Papa,20
+D. Jose-5th Avenue,21
+D. Jose-Monumento,23
+D. Jose-Balintawak,24
+D. Jose-Fernando Poe Jr.,28
+Bambang-Dr. Santos,39
+Bambang-Ninoy Aquino,36
+Bambang-PITX,35
+Bambang-MIA Road,33
+Bambang-Redemptorist-Aseana,32
+Bambang-Baclaran,30
+Bambang-EDSA,29
+Bambang-Libertad,27
+Bambang-Gil Puyat,26
+Bambang-Vito Cruz,25
+Bambang-Quirino,23
+Bambang-Pedro Gil,22
+Bambang-UN Avenue,21
+Bambang-Central,19
+Bambang-Carriedo,18
+Bambang-D. Jose,17
+Bambang-Tayuman,16
+Bambang-Blumentritt,17
+Bambang-Abad Santos,18
+Bambang-R. Papa,20
+Bambang-5th Avenue,20
+Bambang-Monumento,22
+Bambang-Balintawak,23
+Bambang-Fernando Poe Jr.,27
+Tayuman-Dr. Santos,40
+Tayuman-Ninoy Aquino,37
+Tayuman-PITX,36
+Tayuman-MIA Road,34
+Tayuman-Redemptorist-Aseana,33
+Tayuman-Baclaran,30
+Tayuman-EDSA,30
+Tayuman-Libertad,28
+Tayuman-Gil Puyat,27
+Tayuman-Vito Cruz,25
+Tayuman-Quirino,24
+Tayuman-Pedro Gil,23
+Tayuman-UN Avenue,22
+Tayuman-Central,20
+Tayuman-Carriedo,19
+Tayuman-D. Jose,18
+Tayuman-Bambang,17
+Tayuman-Blumentritt,16
+Tayuman-Abad Santos,17
+Tayuman-R. Papa,19
+Tayuman-5th Avenue,20
+Tayuman-Monumento,21
+Tayuman-Balintawak,23
+Tayuman-Fernando Poe Jr.,26
+Blumentritt-Dr. Santos,41
+Blumentritt-Ninoy Aquino,38
+Blumentritt-PITX,37
+Blumentritt-MIA Road,35
+Blumentritt-Redemptorist-Aseana,34
+Blumentritt-Baclaran,31
+Blumentritt-EDSA,31
+Blumentritt-Libertad,29
+Blumentritt-Gil Puyat,28
+Blumentritt-Vito Cruz,26
+Blumentritt-Quirino,25
+Blumentritt-Pedro Gil,24
+Blumentritt-UN Avenue,23
+Blumentritt-Central,21
+Blumentritt-Carriedo,20
+Blumentritt-D. Jose,19
+Blumentritt-Bambang,18
+Blumentritt-Tayuman,17
+Blumentritt-Abad Santos,16
+Blumentritt-R. Papa,18
+Blumentritt-5th Avenue,19
+Blumentritt-Monumento,20
+Blumentritt-Balintawak,22
+Blumentritt-Fernando Poe Jr.,25
+Abad Santos-Dr. Santos,42
+Abad Santos-Ninoy Aquino,40
+Abad Santos-PITX,38
+Abad Santos-MIA Road,36
+Abad Santos-Redemptorist-Aseana,35
+Abad Santos-Baclaran,33
+Abad Santos-EDSA,32
+Abad Santos-Libertad,30
+Abad Santos-Gil Puyat,29
+Abad Santos-Vito Cruz,28
+Abad Santos-Quirino,27
+Abad Santos-Pedro Gil,25
+Abad Santos-UN Avenue,24
+Abad Santos-Central,23
+Abad Santos-Carriedo,21
+Abad Santos-D. Jose,20
+Abad Santos-Bambang,20
+Abad Santos-Tayuman,19
+Abad Santos-Blumentritt,18
+Abad Santos-R. Papa,16
+Abad Santos-5th Avenue,17
+Abad Santos-Monumento,19
+Abad Santos-Balintawak,20
+Abad Santos-Fernando Poe Jr.,24
+R. Papa-Dr. Santos,43
+R. Papa-Ninoy Aquino,41
+R. Papa-PITX,39
+R. Papa-MIA Road,37
+R. Papa-Redemptorist-Aseana,36
+R. Papa-Baclaran,34
+R. Papa-EDSA,33
+R. Papa-Libertad,31
+R. Papa-Gil Puyat,30
+R. Papa-Vito Cruz,29
+R. Papa-Quirino,28
+R. Papa-Pedro Gil,26
+R. Papa-UN Avenue,25
+R. Papa-Central,23
+R. Papa-Carriedo,22
+R. Papa-D. Jose,21
+R. Papa-Bambang,20
+R. Papa-Tayuman,20
+R. Papa-Blumentritt,19
+R. Papa-Abad Santos,17
+R. Papa-5th Avenue,16
+R. Papa-Monumento,18
+R. Papa-Balintawak,19
+R. Papa-Fernando Poe Jr.,23
+5th Avenue-Dr. Santos,45
+5th Avenue-Ninoy Aquino,42
+5th Avenue-PITX,40
+5th Avenue-MIA Road,38
+5th Avenue-Redemptorist-Aseana,37
+5th Avenue-Baclaran,35
+5th Avenue-EDSA,34
+5th Avenue-Libertad,33
+5th Avenue-Gil Puyat,32
+5th Avenue-Vito Cruz,30
+5th Avenue-Quirino,29
+5th Avenue-Pedro Gil,28
+5th Avenue-UN Avenue,27
+5th Avenue-Central,25
+5th Avenue-Carriedo,24
+5th Avenue-D. Jose,23
+5th Avenue-Bambang,22
+5th Avenue-Tayuman,21
+5th Avenue-Blumentritt,20
+5th Avenue-Abad Santos,19
+5th Avenue-R. Papa,18
+5th Avenue-Monumento,16
+5th Avenue-Balintawak,18
+5th Avenue-Fernando Poe Jr.,21
+Monumento-Dr. Santos,46
+Monumento-Ninoy Aquino,44
+Monumento-PITX,42
+Monumento-MIA Road,40
+Monumento-Redemptorist-Aseana,39
+Monumento-Baclaran,37
+Monumento-EDSA,36
+Monumento-Libertad,34
+Monumento-Gil Puyat,33
+Monumento-Vito Cruz,32
+Monumento-Quirino,31
+Monumento-Pedro Gil,29
+Monumento-UN Avenue,28
+Monumento-Central,27
+Monumento-Carriedo,25
+Monumento-D. Jose,24
+Monumento-Bambang,23
+Monumento-Tayuman,23
+Monumento-Blumentritt,22
+Monumento-Abad Santos,20
+Monumento-R. Papa,19
+Monumento-5th Avenue,18
+Monumento-Balintawak,16
+Monumento-Fernando Poe Jr.,20
+Balintawak-Dr. Santos,49
+Balintawak-Ninoy Aquino,47
+Balintawak-PITX,45
+Balintawak-MIA Road,43
+Balintawak-Redemptorist-Aseana,42
+Balintawak-Baclaran,40
+Balintawak-EDSA,39
+Balintawak-Libertad,38
+Balintawak-Gil Puyat,37
+Balintawak-Vito Cruz,35
+Balintawak-Quirino,34
+Balintawak-Pedro Gil,33
+Balintawak-UN Avenue,32
+Balintawak-Central,30
+Balintawak-Carriedo,29
+Balintawak-D. Jose,28
+Balintawak-Bambang,27
+Balintawak-Tayuman,26
+Balintawak-Blumentritt,25
+Balintawak-Abad Santos,24
+Balintawak-R. Papa,23
+Balintawak-5th Avenue,21
+Balintawak-Monumento,20
+Balintawak-Fernando Poe Jr.,16
+Fernando Poe Jr.-Dr. Santos,52
+Fernando Poe Jr.-Ninoy Aquino,50
+Fernando Poe Jr.-PITX,48
+Fernando Poe Jr.-MIA Road,46
+Fernando Poe Jr.-Redemptorist-Aseana,45
+Fernando Poe Jr.-Baclaran,43
+Fernando Poe Jr.-EDSA,42
+Fernando Poe Jr.-Libertad,40
+Fernando Poe Jr.-Gil Puyat,39
+Fernando Poe Jr.-Vito Cruz,38
+Fernando Poe Jr.-Quirino,37
+Fernando Poe Jr.-Pedro Gil,35
+Fernando Poe Jr.-UN Avenue,34
+Fernando Poe Jr.-Central,33
+Fernando Poe Jr.-Carriedo,31
+Fernando Poe Jr.-D. Jose,30
+Fernando Poe Jr.-Bambang,30
+Fernando Poe Jr.-Tayuman,29
+Fernando Poe Jr.-Blumentritt,28
+Fernando Poe Jr.-Abad Santos,26
+Fernando Poe Jr.-R. Papa,25
+Fernando Poe Jr.-5th Avenue,24
+Fernando Poe Jr.-Monumento,22
+Fernando Poe Jr.-Balintawak,19

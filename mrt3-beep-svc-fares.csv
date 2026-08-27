@@ -1,0 +1,157 @@
+Route,Fare
+North Ave-Quezon Ave,10.00
+North Ave-GMA Kamuning,10.00
+North Ave-Araneta-Cubao,13.00
+North Ave-Santolan-Annapolis,13.00
+North Ave-Ortigas,16.00
+North Ave-Shaw Blvd,16.00
+North Ave-Boni,16.00
+North Ave-Guadalupe,19.00
+North Ave-Buendia,19.00
+North Ave-Ayala,19.00
+North Ave-Magallanes,22.00
+North Ave-Taft Ave,22.00
+Quezon Ave-North Ave,10.00
+Quezon Ave-GMA Kamuning,10.00
+Quezon Ave-Araneta-Cubao,10.00
+Quezon Ave-Santolan-Annapolis,13.00
+Quezon Ave-Ortigas,13.00
+Quezon Ave-Shaw Blvd,16.00
+Quezon Ave-Boni,16.00
+Quezon Ave-Guadalupe,16.00
+Quezon Ave-Buendia,19.00
+Quezon Ave-Ayala,19.00
+Quezon Ave-Magallanes,19.00
+Quezon Ave-Taft Ave,22.00
+GMA Kamuning-North Ave,10.00
+GMA Kamuning-Quezon Ave,10.00
+GMA Kamuning-Araneta-Cubao,10.00
+GMA Kamuning-Santolan-Annapolis,10.00
+GMA Kamuning-Ortigas,13.00
+GMA Kamuning-Shaw Blvd,13.00
+GMA Kamuning-Boni,16.00
+GMA Kamuning-Guadalupe,16.00
+GMA Kamuning-Buendia,16.00
+GMA Kamuning-Ayala,19.00
+GMA Kamuning-Magallanes,19.00
+GMA Kamuning-Taft Ave,19.00
+Araneta-Cubao-North Ave,13.00
+Araneta-Cubao-Quezon Ave,10.00
+Araneta-Cubao-GMA Kamuning,10.00
+Araneta-Cubao-Santolan-Annapolis,10.00
+Araneta-Cubao-Ortigas,10.00
+Araneta-Cubao-Shaw Blvd,13.00
+Araneta-Cubao-Boni,13.00
+Araneta-Cubao-Guadalupe,16.00
+Araneta-Cubao-Buendia,16.00
+Araneta-Cubao-Ayala,16.00
+Araneta-Cubao-Magallanes,19.00
+Araneta-Cubao-Taft Ave,19.00
+Santolan-Annapolis-North Ave,13.00
+Santolan-Annapolis-Quezon Ave,13.00
+Santolan-Annapolis-GMA Kamuning,10.00
+Santolan-Annapolis-Araneta-Cubao,10.00
+Santolan-Annapolis-Ortigas,10.00
+Santolan-Annapolis-Shaw Blvd,10.00
+Santolan-Annapolis-Boni,13.00
+Santolan-Annapolis-Guadalupe,13.00
+Santolan-Annapolis-Buendia,16.00
+Santolan-Annapolis-Ayala,16.00
+Santolan-Annapolis-Magallanes,16.00
+Santolan-Annapolis-Taft Ave,19.00
+Ortigas-North Ave,16.00
+Ortigas-Quezon Ave,13.00
+Ortigas-GMA Kamuning,13.00
+Ortigas-Araneta-Cubao,10.00
+Ortigas-Santolan-Annapolis,10.00
+Ortigas-Shaw Blvd,10.00
+Ortigas-Boni,10.00
+Ortigas-Guadalupe,13.00
+Ortigas-Buendia,13.00
+Ortigas-Ayala,16.00
+Ortigas-Magallanes,16.00
+Ortigas-Taft Ave,16.00
+Shaw Blvd-North Ave,16.00
+Shaw Blvd-Quezon Ave,16.00
+Shaw Blvd-GMA Kamuning,13.00
+Shaw Blvd-Araneta-Cubao,13.00
+Shaw Blvd-Santolan-Annapolis,10.00
+Shaw Blvd-Ortigas,10.00
+Shaw Blvd-Boni,10.00
+Shaw Blvd-Guadalupe,10.00
+Shaw Blvd-Buendia,13.00
+Shaw Blvd-Ayala,13.00
+Shaw Blvd-Magallanes,16.00
+Shaw Blvd-Taft Ave,16.00
+Boni-North Ave,16.00
+Boni-Quezon Ave,16.00
+Boni-GMA Kamuning,16.00
+Boni-Araneta-Cubao,13.00
+Boni-Santolan-Annapolis,13.00
+Boni-Ortigas,10.00
+Boni-Shaw Blvd,10.00
+Boni-Guadalupe,10.00
+Boni-Buendia,10.00
+Boni-Ayala,13.00
+Boni-Magallanes,13.00
+Boni-Taft Ave,16.00
+Guadalupe-North Ave,19.00
+Guadalupe-Quezon Ave,16.00
+Guadalupe-GMA Kamuning,16.00
+Guadalupe-Araneta-Cubao,16.00
+Guadalupe-Santolan-Annapolis,13.00
+Guadalupe-Ortigas,13.00
+Guadalupe-Shaw Blvd,10.00
+Guadalupe-Boni,10.00
+Guadalupe-Buendia,10.00
+Guadalupe-Ayala,10.00
+Guadalupe-Magallanes,13.00
+Guadalupe-Taft Ave,13.00
+Buendia-North Ave,19.00
+Buendia-Quezon Ave,19.00
+Buendia-GMA Kamuning,16.00
+Buendia-Araneta-Cubao,16.00
+Buendia-Santolan-Annapolis,16.00
+Buendia-Ortigas,13.00
+Buendia-Shaw Blvd,13.00
+Buendia-Boni,10.00
+Buendia-Guadalupe,10.00
+Buendia-Ayala,10.00
+Buendia-Magallanes,10.00
+Buendia-Taft Ave,13.00
+Ayala-North Ave,19.00
+Ayala-Quezon Ave,19.00
+Ayala-GMA Kamuning,19.00
+Ayala-Araneta-Cubao,16.00
+Ayala-Santolan-Annapolis,16.00
+Ayala-Ortigas,16.00
+Ayala-Shaw Blvd,13.00
+Ayala-Boni,13.00
+Ayala-Guadalupe,10.00
+Ayala-Buendia,10.00
+Ayala-Magallanes,10.00
+Ayala-Taft Ave,10.00
+Magallanes-North Ave,22.00
+Magallanes-Quezon Ave,19.00
+Magallanes-GMA Kamuning,19.00
+Magallanes-Araneta-Cubao,19.00
+Magallanes-Santolan-Annapolis,16.00
+Magallanes-Ortigas,16.00
+Magallanes-Shaw Blvd,16.00
+Magallanes-Boni,13.00
+Magallanes-Guadalupe,13.00
+Magallanes-Buendia,10.00
+Magallanes-Ayala,10.00
+Magallanes-Taft Ave,10.00
+Taft Ave-North Ave,22.00
+Taft Ave-Quezon Ave,22.00
+Taft Ave-GMA Kamuning,19.00
+Taft Ave-Araneta-Cubao,19.00
+Taft Ave-Santolan-Annapolis,19.00
+Taft Ave-Ortigas,16.00
+Taft Ave-Shaw Blvd,16.00
+Taft Ave-Boni,16.00
+Taft Ave-Guadalupe,13.00
+Taft Ave-Buendia,13.00
+Taft Ave-Ayala,10.00
+Taft Ave-Magallanes,10.00
