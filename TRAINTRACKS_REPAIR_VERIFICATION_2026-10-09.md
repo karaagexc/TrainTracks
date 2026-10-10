@@ -95,7 +95,7 @@ isolated reproductions exposed these additional regressions:
 - `npx tsc --noEmit`: passes. Production build also completed its TypeScript check.
 - `npm run build`: optimized webpack production/PWA build passes, 13 static pages. Windows sandbox EPERM required an authorized host retry; middleware convention deprecation remains.
 - `scripts/api-auth-repair-smoke.mjs`: passes isolated handler/session/role/profile/config/validation contracts; not a Google OAuth round-trip.
-- `scripts/prediction-crowd-repair-smoke.mjs`: passes HTTP-authority, metadata, retry/config and sample/privacy contracts. Latest 100 warm responses took about 265 ms total with two Intl formatters; this is not browser frame time or a server-cost guarantee.
+- `scripts/prediction-crowd-repair-smoke.mjs`: passes HTTP-authority, metadata, retry/config and sample/privacy contracts. Latest isolated 100 warm responses took about 44 ms total with two Intl formatters; this is not browser frame time or a server-cost guarantee.
 - `scripts/fare-verification-smoke.mjs`: 912 directed pairs; 2,136 base and effective cells verified; 600 LRT-1 concession cells explicitly unverified; zero backend calls.
 - `scripts/crowd-browser-repair-smoke.mjs`: real Chrome cross-tab lease and worker cases pass; not hosted Supabase transport.
 - `npm run test:db`: 18 passed / 0 failed in actual isolated PostgreSQL 17.10. Twenty independent clients/backends race one sample and produce one delivery claim/observation. PostgreSQL stopped afterward.
@@ -243,7 +243,7 @@ rollback is safe merely because an application deployment can be restored.
 ### Published Draft And Preview
 
 Draft review: [GitHub PR #1](https://github.com/karaagexc/TrainTracks/pull/1).
-Tested application revision: `b4aab15e86ea111c1b860a2dadb228d154435e69`.
+Initial tested application revision: `b4aab15e86ea111c1b860a2dadb228d154435e69`.
 Initial [Vercel Preview](https://traintracks-44o4gvce6-aaron-martinezs-projects-ea1c41f7.vercel.app)
 is **READY**, deployment `dpl_4teowhLteeJL2uTj5z45jFVZQSu3`, source CLI, with
 the exact tested commit/branch metadata and no production aliases. It is
@@ -325,7 +325,7 @@ origin `https://traintracks-preview-aaron-martinezs-projects-ea1c41f7.vercel.app
 No existing auth allowlist was overwritten. Rebuilt the same tested application
 revision without cache and assigned a new dedicated stable Preview alias:
 [admin sign-in](https://traintracks-preview-aaron-martinezs-projects-ea1c41f7.vercel.app/admin).
-The alias resolves to **READY** deployment
+At this stage the alias resolved to **READY** deployment
 `dpl_9mjezkF2CqUgki83CgqadPfoFcfM`, immutable hostname
 `traintracks-hvr9rg98w-aaron-martinezs-projects-ea1c41f7.vercel.app`, exact commit
 `b4aab15e86ea111c1b860a2dadb228d154435e69` and repair branch. All 429 uploaded
@@ -396,8 +396,39 @@ measuring settings interactions. It neither force-clicks through overlays nor
 disables alerts, service rules, animations or design to make tests pass. The
 latest performance result above retains the unmet throttled target.
 
-Replacement Preview publication is recorded separately after deployed source
-identity and read-only hosted checks. Production release gates remain open.
+#### Published Simulator Repair
+
+Application commit `dc0a0fd1e7b9bd37bd315e5d5d38df8c09aa224a` is pushed to the
+existing GitHub repair branch. The dedicated
+[stable Preview](https://traintracks-preview-aaron-martinezs-projects-ea1c41f7.vercel.app/admin)
+now resolves to **READY** deployment `dpl_Ay3b8Uc3bJuKuJuH1AEVJpyY4bVF`, immutable
+host `traintracks-dhx31374i-aaron-martinezs-projects-ea1c41f7.vercel.app`, source CLI,
+Preview target, exact commit/branch metadata. The cloud production/PWA build and
+TypeScript pass. All 430 extracted archive files match SHA-256; all 429 uploaded
+source files match SHA-1, zero mismatches, neither unrelated user SVG uploaded.
+Only `.gitignore` is intentionally omitted by upload handling.
+
+GET-only stable-Preview results:
+
+| Surface | Result / interpretation |
+| --- | --- |
+| `/`, `/login`, `/explorer`, `/api-console`, `/docs`, `/admin` | 200 HTML; not authenticated success or hosted simulator interaction proof |
+| `/auth/reset-password`, `/auth/verified`, `/profile/setup` | 200 HTML; real account/email/profile success remains pending |
+| `/api/predictions` | 200; internal navigation remains available |
+| `/api/auth/admin`, `/api/trips` | 401 anonymous; no history was written |
+| `/api/admin/config` | 403 anonymous; no settings were changed |
+| Existing dark/voyager tile proxy samples | 200; approved CARTO basemap retained |
+| `/api/crowd/presence`, `/api/public/predictions` | 503; privileged preview backend remains unavailable |
+| Invalid callback, no PKCE verifier | 307 to same stable origin's login with `pkce_verifier_missing`, `no-store`, no code forwarded or session exchange |
+
+No preview environment/secret change was needed for this simulator repair. The
+stable origin allowlist and previously approved CARTO targeting remain. The
+production lookup still returns `dpl_CUNpVsCk51C29dsfe7NbJY8kQG38`, READY, with
+both original production aliases. No production promotion, main merge, role
+change, migration, maintenance change or hosted application-data write occurred.
+The draft PR and all production release gates remain open. Hosted simulator
+interaction and real Google sign-in/reload confirmation are separate from the
+passing local mounted replay and read-only HTTP checks.
 
 ## Dependency Exposure
 
