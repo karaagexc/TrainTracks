@@ -142,6 +142,7 @@ export function useSimEngine() {
         setSimulatedSpeed,
         endTrip,
         isDevMode,
+        isGpsOverride,
         line7Mode,
     } = useTripStore();
 
@@ -159,6 +160,7 @@ export function useSimEngine() {
     const isPlayingRef = useRef(isPlaying);
     const locationRef = useRef(ghostLocation);
     const speedRef = useRef(0);
+    const simulationTripIdRef = useRef<string | null>(null);
 
     statusRef.current = status;
     isPlayingRef.current = isPlaying;
@@ -187,6 +189,15 @@ export function useSimEngine() {
     }, [setSimulatedHeading, setSimulatedLocation, setSimulatedSpeed]);
 
     useEffect(() => {
+        if (!origin || !destination) {
+            simulationTripIdRef.current = null;
+            setIsPlaying(false);
+            setStatus('IDLE');
+            setCurrentStopIndex(0);
+            setDwellStartTime(null);
+            setEta(null);
+            setProgress(0);
+        }
         if (origin && destination) {
             const nextRoute = buildSimRouteForStations(origin, destination);
             if (nextRoute.length > 0) {
@@ -201,21 +212,32 @@ export function useSimEngine() {
             speedRef.current = 0;
             setRoute([]);
             clearSimSelfPresence();
+        } else {
+            setGhostLocation(null);
+            setRoute([]);
+            clearSimSelfPresence();
         }
     }, [origin, destination, setSimulatedLocation, setSimulatedSpeed, isDevMode, line7Mode, primeRoute]);
 
     useEffect(() => {
-        if (!isDevMode) {
+        if (!isDevMode || !isGpsOverride) {
+            setIsPlaying(false);
             clearSimSelfPresence();
         }
-    }, [isDevMode]);
+        if (!isDevMode) simulationTripIdRef.current = null;
+    }, [isDevMode, isGpsOverride]);
 
     useEffect(() => () => clearSimSelfPresence(), []);
 
     useEffect(() => {
         if (!isPlaying || !ghostLocation || route.length === 0) return;
+        const playbackTripId = simulationTripIdRef.current;
+        if (!playbackTripId) return;
 
         const interval = setInterval(() => {
+            const trip = useTripStore.getState();
+            if (!isPlayingRef.current || !trip.isDevMode || !trip.isGpsOverride
+                || trip.journeySnapshot.tripId !== playbackTripId) return;
             const currentStatus = statusRef.current;
             const currentLocation = locationRef.current!;
 
@@ -317,8 +339,18 @@ export function useSimEngine() {
         return () => clearInterval(interval);
     }, [isPlaying, route, currentStopIndex, multiplier, ghostLocation, dwellStartTime, endTrip, setSimulatedHeading, setSimulatedLocation, setSimulatedSpeed]);
 
-    const play = (routeOverride?: Station[]) => {
+    const canControlTrip = () => {
         const store = useTripStore.getState();
+        return store.isDevMode && !store.pendingCompletedTrip && !store.pendingTripRecovery
+            && (store.status === 'IDLE' || (store.journeySnapshot.tripId !== null
+                && store.journeySnapshot.tripId === simulationTripIdRef.current));
+    };
+
+    const play = (routeOverride?: Station[]) => {
+        if (!canControlTrip()) return false;
+        const store = useTripStore.getState();
+        if (!store.origin || !store.destination) return false;
+        if (store.status === 'ARRIVED') return startScenario(store.origin, store.destination);
         let playableRoute = routeOverride ?? route;
 
         const routeBelongsToCurrentTrip = playableRoute.length > 1
@@ -350,8 +382,14 @@ export function useSimEngine() {
         store.setGpsOverride(true);
         primeRoute(playableRoute, startIndex, startLocation);
 
-        if (store.status === 'IDLE' || store.status === 'ARRIVED' || !store.journeySnapshot.route) {
+        if (store.status === 'IDLE' || !store.journeySnapshot.route) {
             store.startTrip();
+        }
+        simulationTripIdRef.current = useTripStore.getState().journeySnapshot.tripId;
+        if (!simulationTripIdRef.current) {
+            store.setGpsOverride(false);
+            clearSimSelfPresence();
+            return false;
         }
 
         setStatus(getPlaybackStatus(playableRoute, startIndex));
@@ -360,15 +398,18 @@ export function useSimEngine() {
     };
 
     const startScenario = (scenarioOrigin: Station, scenarioDestination: Station) => {
+        if (!canControlTrip()) return false;
+        const store = useTripStore.getState();
         const nextRoute = buildSimRouteForStations(scenarioOrigin, scenarioDestination);
         if (nextRoute.length < 2) return false;
 
-        const store = useTripStore.getState();
         const scenarioTransitMode = scenarioOrigin.lineId === 'EDSA' || scenarioDestination.lineId === 'EDSA'
             ? 'bus'
             : 'train';
         setIsPlaying(false);
-        if (store.transitMode !== scenarioTransitMode) {
+        // A scenario is a new simulated trip, not a destination amendment.
+        store.reset();
+        if (useTripStore.getState().transitMode !== scenarioTransitMode) {
             store.setTransitMode(scenarioTransitMode);
         }
         store.setGpsOverride(true);
@@ -377,6 +418,12 @@ export function useSimEngine() {
         store.setTicketType(scenarioTransitMode === 'bus' ? 'BUS_REGULAR' : 'SJT');
         primeRoute(nextRoute);
         store.startTrip();
+        simulationTripIdRef.current = useTripStore.getState().journeySnapshot.tripId;
+        if (!simulationTripIdRef.current) {
+            store.setGpsOverride(false);
+            clearSimSelfPresence();
+            return false;
+        }
         setStatus(getPlaybackStatus(nextRoute, 0));
         setIsPlaying(true);
         return true;

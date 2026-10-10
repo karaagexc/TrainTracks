@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSimEngine } from "@/hooks/useSimEngine";
 import { useTripStore } from "@/store/useTripStore";
 import { useTrainStore } from "@/store/useTrainStore";
@@ -20,7 +20,6 @@ export function CommandCenter({ backgroundMode }: CommandCenterProps) {
     const {
         origin, setOrigin,
         destination, setDestination,
-        isGpsOverride, setGpsOverride: toggleGpsOverride,
         setSimulatedHeading, setSimulatedSpeed,
         line7Mode, setLine7Mode,
         maintenanceMode, setMaintenanceMode,
@@ -61,13 +60,6 @@ export function CommandCenter({ backgroundMode }: CommandCenterProps) {
 
 
 
-    // Auto-enable override when playing
-    useEffect(() => {
-        if (isPlaying && !isGpsOverride) {
-            toggleGpsOverride(true);
-        }
-    }, [isPlaying, isGpsOverride, toggleGpsOverride]);
-
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
@@ -77,6 +69,7 @@ export function CommandCenter({ backgroundMode }: CommandCenterProps) {
     if (!isOpen) {
         return (
             <button
+                aria-label="Show simulation controls"
                 onClick={() => setIsOpen(true)}
                 className={cn(
                     "fixed top-4 left-4 p-3 rounded-full border border-zinc-800 shadow-xl transition-all duration-300",
@@ -123,6 +116,7 @@ export function CommandCenter({ backgroundMode }: CommandCenterProps) {
                         <button
                             onClick={() => {
                                 if (confirm("Reset Trip?")) {
+                                    pause();
                                     useTripStore.getState().reset();
                                     setIsOpen(false);
                                 }
@@ -486,6 +480,7 @@ export function CommandCenter({ backgroundMode }: CommandCenterProps) {
                     <button
                         onClick={() => {
                             if (confirm("Reset Trip & Return to Home?")) {
+                                pause();
                                 useTripStore.getState().reset();
                                 setIsOpen(false);
                             }
@@ -519,6 +514,7 @@ export function CommandCenter({ backgroundMode }: CommandCenterProps) {
 
                         <div className="flex items-center gap-2">
                             <button
+                                aria-label={isPlaying ? 'Pause simulation' : 'Play simulation'}
                                 onClick={() => {
                                     if (isPlaying) {
                                         pause();
@@ -536,6 +532,7 @@ export function CommandCenter({ backgroundMode }: CommandCenterProps) {
                         </div>
 
                         <button
+                            aria-label="Skip to next station"
                             onClick={() => {
                                 // Jump to next
                                 if (route[currentStopIndex + 1]) teleport(currentStopIndex + 1);

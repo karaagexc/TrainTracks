@@ -1,7 +1,7 @@
 # TrainTracks Reliability Repair Verification
 
 Date: 2026-10-09, Asia/Manila. Train-focused repair; bus redevelopment excluded.
-Final verification resumed on 2026-10-10, Asia/Manila.
+Verification resumed on 2026-10-10; simulator follow-up on 2026-10-11, Asia/Manila.
 This is a working release ledger, not a claim of flawless real-world operation.
 
 ## Current Verdict
@@ -85,6 +85,9 @@ isolated reproductions exposed these additional regressions:
 | R32 | Native wheel/keyboard/pinch pauses camera but canceled or zoom-limit gestures emit no Leaflet end event | Native intent cancels queued automatic camera work; fallback timer and touch end/cancel preserve ten-second resumption. Fresh production replay covers changing GPS, zoom-limit wheel and stationary two-finger touch; real physical pinch remains pending |
 | R33 | Begin/reset can overwrite a pending recovery candidate | Both commands preserve pending recovery; explicit discard/resume is required and unit guards pass. **Open P1 release gate:** the 20-minute-to-six-hour recovery candidate has no mounted decision control yet, so a commuter cannot resolve this state until Fable's recovery interface is integrated |
 | R34 | Canonical short production origin omits the user's long project alias from callback validation | Accept only the two verified production aliases, canonical configured origin, platform production origin and explicit extra allowlist. Handler fixtures cover both production aliases and reject an arbitrary generated preview; real Google round trip remains pending |
+| R35 | Mounted LRT-2 simulator triggers caught React error 185 before its first movement tick | Timestamp simulated coordinates at input, not during render; isolate simulation memo inputs from estimator output. Mounted button replay checks the error boundary explicitly, shared sample timestamps, bounded updates and pause/resume |
+| R36 | Switching active scenarios amends the old origin; Play can claim an existing real journey and bypass scenario guards | Explicit new-scenario reset/begin with stable simulator-owned trip ID. Play/scenario commands cannot take over real trips, pending recovery or retained receipts. Mounted replay covers switching and native-trip isolation |
+| R37 | Reset can re-enable the GPS override; completed replay can reuse the old trip, and old interval work can affect its replacement | Remove redundant render-effect override activation; pause/reset clears the input clock. Interval work is bound to its captured trip ID and fresh mode flags. Owned ARRIVED replay explicitly starts a new trip; mounted replay waits past the old receipt timer |
 
 ## Executed Checks
 
@@ -96,9 +99,10 @@ isolated reproductions exposed these additional regressions:
 - `scripts/fare-verification-smoke.mjs`: 912 directed pairs; 2,136 base and effective cells verified; 600 LRT-1 concession cells explicitly unverified; zero backend calls.
 - `scripts/crowd-browser-repair-smoke.mjs`: real Chrome cross-tab lease and worker cases pass; not hosted Supabase transport.
 - `npm run test:db`: 18 passed / 0 failed in actual isolated PostgreSQL 17.10. Twenty independent clients/backends race one sample and produce one delivery claim/observation. PostgreSQL stopped afterward.
-- Whole-repository lint: latest run has zero errors and 203 warnings across 260 files. Warnings are not treated as a clean bill of health.
-- Final fresh-build production frontend matrix: **122/122 checks pass**, 28 screenshots, no uncaught page errors. This includes the four rendered labels, both bars, NAV intermediate dwelling, raw transfer/final receipt, DR effective-sample framing, map icon/inner-DOM identity, native gesture fallback, GeoJSON world/canvas alignment, both themes and handheld/cookie guard isolation. The extra raw-GPS replay is recorded separately; selected-phase results do not replace this matrix.
-- Additional raw-GPS selected-phase replay: **46/46 checks pass**, 13 screenshots, no uncaught page errors. Browser geolocation callbacks feed the actual sensor hooks, reducer, effective location store and mounted cards. All four labels agree with the effective speedometer; its source/timestamps distinguish GPS from deliberate recovery smoothing. The first valid native-zero sample displays zero, two fresh station fixes confirm intermediate dwelling, and the adjacent bar resets while whole-trip progress remains. Travel timestamps respect the GPS jump filter. These counts include repeated setup checks and must not be added together as 168 unique cases.
+- Whole-repository lint: latest simulator-repair run has zero errors and 204 warnings across 260 files. Warnings are not treated as a clean bill of health.
+- Final simulator-repair production frontend matrix: **142/142 checks pass**, 35 screenshots, no uncaught page errors. The actual simulator buttons, pause/resume, switching, reset, live-trip isolation and completed replay now run alongside the four labels, both bars, NAV intermediate dwelling, raw transfer/final receipt, DR framing, map identity/interpolation, gestures, GeoJSON alignment, both themes and handheld/cookie gates. Explicit caught-error-boundary checks supplement `pageerror` collection. This replaces the earlier 122-check complete matrix, which had not exercised simulator playback.
+- Focused final simulator replay: **16/16 checks pass**, two screenshots; the same simulator cases also pass in the complete final matrix. These are not 16 additional unique checks.
+- Historical additional raw-GPS selected-phase replay: **46/46 checks pass**, 13 screenshots, no uncaught page errors. Browser geolocation callbacks feed actual sensor hooks, reducer, effective store and mounted cards; the same raw-GPS cases pass in the complete final matrix. All labels agree with effective speed/source/time, native zero immediately displays zero, two station fixes confirm dwelling, and the adjacent bar resets without erasing whole-trip progress. These overlapping setup/case counts must not be added to the full matrix as unique cases.
 
 The PostgreSQL harness applies real repository migrations, grants, RLS and RPCs,
 but supplies synthetic auth/JWT gateway context and a Realtime transport stub.
@@ -133,7 +137,7 @@ icon caching alone is not evidence that all lower-end phones meet it.
 
 ### Final Production Profile
 
-Captured 2026-10-10 Asia/Manila on headless Chrome, Intel UHD / ANGLE D3D11 with
+Latest capture: 2026-10-11 Asia/Manila on headless Chrome, Intel UHD / ANGLE D3D11 with
 GPU compositing enabled. This is a desktop-controlled fixture, not a phone
 benchmark. Six crowd trains and a fresh moving GPS journey were published each
 second; real marker/card animations were retained. Backend predictions were
@@ -143,16 +147,17 @@ profile are driver overhead, not proven application hotspots.
 
 | Condition | Frame samples / window | Average FPS | p95 / maximum gap | Click-event to two frames |
 | --- | --- | --- | --- | --- |
-| Normal | 287 / 5.010 s | 57.3 | 16.9 / 100.0 ms; 3 gaps >50 ms | 11.4-79.2 ms |
-| 4x CPU, 150 ms network latency | 180 / 5.021 s | 35.8 | 66.7 / 233.4 ms; 12 gaps >50 ms | 44.1-98.7 ms |
+| Normal | 300 / 5.015 s | 59.8 | 16.8 / 33.3 ms; 0 gaps >50 ms | 17.9-39.3 ms |
+| 4x CPU, 150 ms network latency | 119 / 5.010 s | 23.8 | 83.3 / 150.0 ms; 28 gaps >50 ms | 83.5-168.5 ms |
 
-The normal fixture is approximately 60 FPS but still has outliers. The throttled
-average exceeds 30 FPS in this run, but its p95 misses a 33.3 ms frame budget.
-Other post-cache runs ranged from approximately 22 to 55 FPS under throttling.
+The normal fixture is approximately 60 FPS. The latest throttled average is
+below 30 FPS and its p95 misses a 33.3 ms frame budget. The preceding simulator
+repair run measured 59.2 FPS normally and 17.5 FPS at 4x; older post-cache runs
+ranged from approximately 22 to 55 FPS under throttling.
 Do not mark consistent lower-end performance achieved from the best run or an
 average alone. Further phone/GPU/thermal and sustained-ride profiling is needed.
-The final frame/action capture transferred 14,362 bytes in 18 fixture requests
-normally and 18,781 bytes in 23 at 4x; those intervals include variable action
+The final frame/action capture transferred 12,590 bytes in 16 fixture requests
+normally and 21,450 bytes in 26 at 4x; those intervals include variable action
 time and mocked responses and are not comparable hourly data/billing estimates.
 
 The added raw-GPS images live under `.tmp-edge-debug/repair-20261009/raw-gps`.
@@ -356,6 +361,43 @@ every `vercel.app` host. Production still resolves to
 production setting, migration, admin role, privileged secret, maintenance flag
 or production deployment was changed. Crowd/public-backend availability and
 the other production release gates are not resolved by this auth-origin change.
+
+### Simulator Crash Follow-Up
+
+The user's trip-simulator report exposed a missed mounted path, not an auth or
+CARTO failure. On the previous Preview application source, clicking **LRT-2 EB**
+reproduced React error 185 before the first movement interval. A render-created
+timestamp and dependencies on estimator output repeatedly re-submitted the
+same simulated position. React's error boundary caught it, leaving `pageerror`
+empty; the previous test suite had neither clicked these controls nor asserted
+this boundary on that path. Earlier green counts did not certify the simulator.
+
+R35-R37 are now repaired without CSS, assets, API or database changes. Simulation
+input time is captured by the store setter, independent of estimator metadata.
+The engine owns an explicit trip ID, switches scenarios via begin rather than
+amend, protects native/pending trips, stops on reset/override-off, and prevents
+old interval work or a completed receipt timer from clearing a replacement.
+Existing control appearance is unchanged; icon controls gain accessible names.
+A narrow independent review found no remaining issue in the final replay and
+interval corrections; runtime verification remains the parent's responsibility.
+
+The final production/PWA build, standalone TypeScript, all eleven train suites,
+142-check complete frontend replay and 16-check focused simulator replay pass.
+The simulator replay uses actual mounted controls and explicitly rejects the
+caught crash screen. Its completed-replay fixture uses the existing developer
+end command; it is not an end-to-end physical ride. Simulation history remains
+unsaved. No hosted application writes occurred in these tests.
+
+Local failed evidence is retained: `simulator/pre-fix-results.json` and
+`simulator/pre-fix-crash-390.png`, plus the prior scenario-switch and fixture
+failures. The harness now applies the same advancing service-hour clock to all
+isolated browser contexts, and acknowledges legitimate safety dialogs before
+measuring settings interactions. It neither force-clicks through overlays nor
+disables alerts, service rules, animations or design to make tests pass. The
+latest performance result above retains the unmet throttled target.
+
+Replacement Preview publication is recorded separately after deployed source
+identity and read-only hosted checks. Production release gates remain open.
 
 ## Dependency Exposure
 

@@ -96,6 +96,7 @@ interface TripState {
 
     // GPS Override
     simulatedLocation: { latitude: number; longitude: number } | null;
+    simulatedTimestamp: number | null;
     simulatedHeading: number | null;
     simulatedSpeed: number | null;
     fallbackLocation: { latitude: number; longitude: number } | null;
@@ -256,6 +257,7 @@ function buildCheckpointRestorePatch(
         pendingTripRecovery: null,
         isGpsOverride: false,
         simulatedLocation: null,
+        simulatedTimestamp: null,
         simulatedHeading: null,
         simulatedSpeed: null,
         gpsReconnecting: snapshot.gpsFallbackActive,
@@ -305,6 +307,7 @@ export const useTripStore = create<TripState>((set, get) => ({
     // GPS Override Defaults
     isGpsOverride: false,
     simulatedLocation: null,
+    simulatedTimestamp: null,
     simulatedHeading: null,
     simulatedSpeed: null,
     fallbackLocation: null,
@@ -696,6 +699,7 @@ export const useTripStore = create<TripState>((set, get) => ({
         tripOwnerId: null,
         isGpsOverride: false,
         simulatedLocation: null,
+        simulatedTimestamp: null,
         fallbackLocation: null,
         fallbackHeading: null,
         fallbackSpeed: null,
@@ -709,7 +713,7 @@ export const useTripStore = create<TripState>((set, get) => ({
     }),
 
     setGpsOverride: (val) => set({ isGpsOverride: val }),
-    setSimulatedLocation: (loc) => set({ simulatedLocation: loc }),
+    setSimulatedLocation: (loc) => set({ simulatedLocation: loc, simulatedTimestamp: loc ? Date.now() : null }),
     setSimulatedHeading: (h) => set({ simulatedHeading: h }),
     setSimulatedSpeed: (s) => set({ simulatedSpeed: s }),
     setFallbackLocation: (loc) => set({ fallbackLocation: loc }),

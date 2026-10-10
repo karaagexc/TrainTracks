@@ -115,8 +115,10 @@ npm run build
 Run the frontend replay against a separate local production server. It accepts
 `FRONTEND_REPAIR_URL` (loopback only), `FRONTEND_REPAIR_PRODUCTION=1`, optional
 `PLAYWRIGHT_MODULE_PATH` and `PLAYWRIGHT_CHROME_PATH`. Set
-`FRONTEND_REPAIR_PHASE="raw GPS four-state"` only for the additional sensor-hook
-replay; this selected-phase run does not replace the full frontend matrix.
+`FRONTEND_REPAIR_PHASE="raw GPS four-state"` for the sensor-hook replay, or
+`FRONTEND_REPAIR_PHASE="simulator playback"` for the mounted trip-simulator
+controls and live-trip isolation checks. Leave it unset for the complete matrix;
+selected-phase runs do not replace the full frontend matrix.
 Results and screenshots are ignored local artifacts under `.tmp-edge-debug`.
 
 ## Application Routes

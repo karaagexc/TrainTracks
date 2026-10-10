@@ -184,8 +184,8 @@ async function pwaGateChecks() {
 const BASE_URL = process.env.FRONTEND_REPAIR_URL || 'http://127.0.0.1:3100';
 if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(BASE_URL).hostname)) throw new Error('Use a local QA server only.');
 const ONLY_PHASE = process.env.FRONTEND_REPAIR_PHASE;
-if (ONLY_PHASE && ONLY_PHASE !== 'raw GPS four-state') throw new Error('Unknown selected frontend phase.');
-const OUTPUT = path.resolve(__dirname, ONLY_PHASE ? '../.tmp-edge-debug/repair-20261009/raw-gps' : '../.tmp-edge-debug/repair-20261009');
+if (ONLY_PHASE && !['raw GPS four-state', 'simulator playback'].includes(ONLY_PHASE)) throw new Error('Unknown selected frontend phase.');
+const OUTPUT = path.resolve(__dirname, ONLY_PHASE ? `../.tmp-edge-debug/repair-20261009/${ONLY_PHASE === 'simulator playback' ? 'simulator' : 'raw-gps'}` : '../.tmp-edge-debug/repair-20261009');
 fs.mkdirSync(OUTPUT, { recursive: true });
 async function browserChecks() {
     let playwright;
@@ -219,6 +219,15 @@ async function browserChecks() {
     const phase = async (name, run) => { if (ONLY_PHASE && !name.includes(ONLY_PHASE)) return; console.log('Phase: ' + name); try { await run(); } catch (error) { check(name, false, error.stack); } finally { fs.writeFileSync(path.join(OUTPUT, 'results-running.json'), JSON.stringify(output, null, 2)); } };
     const tileCache = new Map();
     let predictionFixture = true;
+    function clockFixture() {
+        const RealDate = Date;
+        const base = RealDate.parse('2026-10-09T02:00:00Z');
+        let offset = Number(sessionStorage.getItem('repair-clock-offset') ?? (base - RealDate.now()));
+        sessionStorage.setItem('repair-clock-offset', String(offset));
+        const time = () => Math.round(RealDate.now() + offset);
+        window.__advanceTime = ms => { offset += ms; sessionStorage.setItem('repair-clock-offset', String(offset)); };
+        window.Date = class extends RealDate { constructor(...args) { super(...(args.length ? args : [time()])); } static now() { return time(); } };
+    }
     function workerFixture() {
         if (!navigator.serviceWorker) return;
         window.__pwaMessages = [];
@@ -244,6 +253,7 @@ async function browserChecks() {
     }
     try {
         const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: 'Asia/Manila', userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' });
+        await context.addInitScript(clockFixture);
         await context.addInitScript(workerFixture);
         const routeHandler = async route => {
             const req = route.request(), url = new URL(req.url());
@@ -270,13 +280,6 @@ async function browserChecks() {
         await context.route('**/*', routeHandler);
         await context.addInitScript(initial => {
             localStorage.setItem('traintracks_welcome_seen', 'true');
-            const RealDate = Date;
-            const base = RealDate.parse('2026-10-09T02:00:00Z');
-            let offset = Number(sessionStorage.getItem('repair-clock-offset') ?? (base - RealDate.now()));
-            sessionStorage.setItem('repair-clock-offset', String(offset));
-            const time = () => Math.round(RealDate.now() + offset);
-            window.__advanceTime = ms => { offset += ms; sessionStorage.setItem('repair-clock-offset', String(offset)); };
-            window.Date = class extends RealDate { constructor(...args) { super(...(args.length ? args : [time()])); } static now() { return time(); } };
             window.__compassRequests = 0;
             if (window.DeviceOrientationEvent) DeviceOrientationEvent.requestPermission = async () => { window.__compassRequests++; return 'denied'; };
             let current = initial, speed = 0, id = 0;
@@ -310,6 +313,85 @@ async function browserChecks() {
         await exposeStores();
         check('store fixture access', await page.evaluate(() => Boolean(window.__trip && window.__fleet)));
         check('same-line unverified quote exposes operator-confirmation warning', !sameLineFareWarningAbsent, 'Isolated render of preserved L1-20 -> L1-19 -> L1-20 route; existing quote block is cross-line only.');
+        await phase('simulator playback through mounted controls', async () => {
+            await page.evaluate(() => {
+                clearInterval(window.__keepGpsFresh);
+                __trip.getState().discardCompletedTrip();
+                __trip.getState().reset();
+                __trip.setState({ isDevMode: true, isGpsOverride: false });
+                window.__simulationUpdates = 0;
+                window.__stopCountingSimulation = __trip.subscribe(() => { window.__simulationUpdates++; });
+            });
+            await page.getByRole('button', { name: 'LRT-2 EB', exact: true }).click();
+            await page.waitForTimeout(5500);
+            const state = await page.evaluate(() => {
+                const s = __trip.getState();
+                return { phase: s.journeySnapshot.phase, tripId: s.journeySnapshot.tripId,
+                    lastSampleAt: s.journeySnapshot.lastSampleAt, timestamp: s.simulatedTimestamp,
+                    effective: __loc.getState().sample, updates: __simulationUpdates,
+                    body: document.body.innerText, simulated: s.simulatedLocation };
+            });
+            check('mounted simulator starts without maximum update depth error', !state.body.includes('Something went wrong') && output.errors.length === 0, { phase: state.phase, updates: state.updates });
+            check('simulator input is timestamped once and shared with the journey/effective sample', state.timestamp > 0 && state.lastSampleAt === state.timestamp && state.effective?.source === 'simulation' && state.effective?.timestamp === state.timestamp, state);
+            const simulationOrigin = station('L2-01');
+            check('simulator advances with bounded updates', state.simulated && state.updates > 0 && state.updates < 200
+                && (Math.abs(state.simulated.latitude - simulationOrigin.latitude) > 1e-8 || Math.abs(state.simulated.longitude - simulationOrigin.longitude) > 1e-8), { updates: state.updates, simulated: state.simulated });
+            await page.screenshot({ path: path.join(OUTPUT, 'simulator-playing-390.png') });
+            output.screenshots.push('simulator-playing-390.png');
+            await page.getByRole('button', { name: 'Pause simulation', exact: true }).click();
+            const paused = await page.evaluate(() => ({ location: __trip.getState().simulatedLocation, timestamp: __trip.getState().simulatedTimestamp, tripId: __trip.getState().journeySnapshot.tripId }));
+            await page.waitForTimeout(2300);
+            const resting = await page.evaluate(() => ({ location: __trip.getState().simulatedLocation, timestamp: __trip.getState().simulatedTimestamp, sampleAt: __trip.getState().journeySnapshot.lastSampleAt }));
+            check('pausing does not fabricate new fixes from journey ticks', resting.timestamp === paused.timestamp && resting.sampleAt === paused.timestamp && JSON.stringify(resting.location) === JSON.stringify(paused.location), { paused, resting });
+            await page.getByRole('button', { name: 'Play simulation', exact: true }).click();
+            await page.waitForTimeout(2300);
+            check('resume advances the same trip without a render loop', await page.evaluate(before => __trip.getState().journeySnapshot.tripId === before.tripId && __trip.getState().simulatedTimestamp > before.timestamp && !document.body.innerText.includes('Something went wrong'), paused));
+            await page.getByRole('button', { name: 'Skip to next station', exact: true }).click();
+            await page.waitForTimeout(4200);
+            const dwelling = await page.evaluate(() => ({ status: __trip.getState().journeySnapshot.statusCode, current: __trip.getState().currentStation?.id, effective: __loc.getState().sample, body: document.body.innerText }));
+            check('station skip settles dwelling through timestamped samples', dwelling.current === 'L2-02' && dwelling.status === 'AT_STATION' && dwelling.effective?.speedKph === 0 && dwelling.body.includes('CURRENT STATION'), dwelling);
+            await page.getByRole('button', { name: 'Transfer QA', exact: true }).click();
+            await page.waitForTimeout(4200);
+            const switched = await page.evaluate(() => ({ origin: __trip.getState().origin?.id,
+                destination: __trip.getState().destination?.id, tripId: __trip.getState().journeySnapshot.tripId,
+                transfers: __trip.getState().journeySnapshot.route?.totalTransferCount }));
+            check('switching scenarios explicitly begins a new simulation trip', switched.origin === 'L1-20' && switched.destination === 'M3-13' && switched.tripId !== paused.tripId && switched.transfers > 0, switched);
+            page.once('dialog', dialog => dialog.accept());
+            await page.getByRole('button', { name: 'Reset', exact: true }).click();
+            await page.waitForTimeout(2300);
+            check('simulator reset stays idle and clears its input clock', await page.evaluate(() => __trip.getState().status === 'IDLE' && !__trip.getState().isGpsOverride && __trip.getState().simulatedTimestamp === null));
+            await page.getByRole('button', { name: 'Show simulation controls', exact: true }).click();
+            const liveTrip = await page.evaluate(({ from, to }) => {
+                const s = __trip.getState();
+                s.setOrigin(from); s.setDestination(to); s.setTicketType('SJT'); s.beginTrip();
+                return __trip.getState().journeySnapshot.tripId;
+            }, { from: station('L1-20'), to: station('L1-19') });
+            await page.getByRole('button', { name: 'Play simulation', exact: true }).click();
+            await page.waitForTimeout(300);
+            check('Play cannot convert a live journey into simulator ownership', await page.evaluate(id => __trip.getState().journeySnapshot.tripId === id && !__trip.getState().isGpsOverride, liveTrip));
+            await page.getByRole('button', { name: 'Transfer QA', exact: true }).click();
+            await page.waitForTimeout(500);
+            check('scenario replacement cannot erase an active non-simulated journey', await page.evaluate(id => __trip.getState().journeySnapshot.tripId === id && __trip.getState().destination?.id === 'L1-19' && !__trip.getState().isGpsOverride, liveTrip));
+            await page.evaluate(() => __trip.getState().reset());
+            await page.getByRole('button', { name: 'Transfer QA', exact: true }).click();
+            await page.waitForTimeout(4200);
+            check('mounted transfer scenario starts without a render loop', await page.evaluate(() => __trip.getState().origin?.id === 'L1-20' && __trip.getState().destination?.id === 'M3-13' && __trip.getState().journeySnapshot.route.totalTransferCount > 0 && __loc.getState().sample?.source === 'simulation' && !document.body.innerText.includes('Something went wrong')));
+            await page.screenshot({ path: path.join(OUTPUT, 'simulator-transfer-390.png') });
+            output.screenshots.push('simulator-transfer-390.png');
+            await page.getByRole('button', { name: 'Pause simulation', exact: true }).click();
+            const completedSimulation = await page.evaluate(() => {
+                __trip.getState().endTrip();
+                return __trip.getState().journeySnapshot.tripId;
+            });
+            await page.getByRole('button', { name: 'Play simulation', exact: true }).click();
+            await page.waitForTimeout(3500);
+            check('completed simulator replay creates a new trip and cancels the old receipt timer', await page.evaluate(id => __trip.getState().journeySnapshot.tripId !== id && ['WAITING', 'TRANSIT'].includes(__trip.getState().status) && __trip.getState().isGpsOverride, completedSimulation));
+            await page.evaluate(() => __trip.getState().reset());
+            await page.waitForTimeout(2300);
+            check('direct store reset cannot re-enable simulator override', await page.evaluate(() => __trip.getState().status === 'IDLE' && !__trip.getState().isGpsOverride && __trip.getState().simulatedTimestamp === null));
+            await page.evaluate(initial => { __stopCountingSimulation(); __trip.setState({ isDevMode: false }); window.__keepGpsFresh = setInterval(() => __gps(initial), 1000); }, station('L1-02'));
+        });
+        if (ONLY_PHASE !== 'simulator playback') {
         await phase('waiting PWA worker respects hydration and recovery gate', async () => {
             await page.evaluate(() => { __trip.setState({ persistenceHydrated: false, status: 'IDLE', origin: null, pendingTripRecovery: null, pendingCompletedTrip: null }); });
             await page.waitForTimeout(200);
@@ -851,6 +933,26 @@ async function browserChecks() {
                 publish(); window.__profileFleetTimer = setInterval(publish, 1000);
             }, { points, fleet });
             await page.waitForTimeout(2000);
+            const clickProfileSettings = async prepareMeasurement => {
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const reminder = page.getByRole('button', { name: 'I Understand', exact: true });
+                    if (await reminder.isVisible()) { await reminder.click(); await page.waitForTimeout(350); }
+                    if (prepareMeasurement) await page.evaluate(() => {
+                        if (window.__measureProfileClick) document.removeEventListener('click', __measureProfileClick, true);
+                        window.__inputMeasured = new Promise(resolve => {
+                            window.__measureProfileClick = () => { const eventAt = performance.now(); requestAnimationFrame(() => requestAnimationFrame(() => resolve({ driverMs: performance.now() - window.__inputStart, eventMs: performance.now() - eventAt }))); };
+                            document.addEventListener('click', __measureProfileClick, { once: true, capture: true });
+                        });
+                        window.__inputStart = performance.now();
+                    });
+                    try { await page.getByRole('button', { name: 'Settings Menu' }).click({ timeout: 2000 }); return; }
+                    catch (error) {
+                        await page.evaluate(() => { if (window.__measureProfileClick) document.removeEventListener('click', __measureProfileClick, true); });
+                        if (!await reminder.isVisible()) throw error;
+                    }
+                }
+                throw new Error('Safety reminder did not settle before the measured settings action.');
+            };
             for (const rate of [1, 4]) {
                 await cdp.send('Emulation.setCPUThrottlingRate', { rate });
                 await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: rate === 4 ? 150 : 0, downloadThroughput: rate === 4 ? 200000 : -1, uploadThroughput: rate === 4 ? 93750 : -1 });
@@ -865,14 +967,11 @@ async function browserChecks() {
                 }));
                 const latencies = [], eventLatencies = [];
                 for (let i = 0; i < 5; i++) {
-                    const reminder = page.getByRole('button', { name: 'I Understand', exact: true });
-                    if (await reminder.count()) await reminder.click();
-                    await page.evaluate(() => { window.__inputMeasured = new Promise(resolve => { document.addEventListener('click', () => { const eventAt = performance.now(); requestAnimationFrame(() => requestAnimationFrame(() => resolve({ driverMs: performance.now() - window.__inputStart, eventMs: performance.now() - eventAt }))); }, { once: true, capture: true }); }); window.__inputStart = performance.now(); });
-                    await page.getByRole('button', { name: 'Settings Menu' }).click();
+                    await clickProfileSettings(true);
                     const latency = await page.evaluate(() => __inputMeasured);
                     latencies.push(latency.driverMs); eventLatencies.push(latency.eventMs);
                 }
-                if (await page.getByRole('button', { name: 'Settings Menu' }).getAttribute('aria-expanded') === 'true') await page.getByRole('button', { name: 'Settings Menu' }).click();
+                if (await page.getByRole('button', { name: 'Settings Menu' }).getAttribute('aria-expanded') === 'true') await clickProfileSettings(false);
                 const profile = (await cdp.send('Profiler.stop')).profile;
                 fs.writeFileSync(path.join(OUTPUT, `cpu-${rate}x.json`), JSON.stringify(profile));
                 const sorted = [...frames.gaps].sort((a, b) => a - b);
@@ -892,6 +991,7 @@ async function browserChecks() {
         check('viewport allows user scaling', !/user-scalable=no|maximum-scale=1(?:,|$)/.test(accessibility.viewport ?? ''), accessibility.viewport);
         await phase('mounted denied GPS and initial onboarding branches', async () => {
             const scanning = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: 'Asia/Manila', userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' });
+            await scanning.addInitScript(clockFixture);
             await scanning.addInitScript(workerFixture);
             await scanning.route('**/*', routeHandler);
             await scanning.addInitScript(() => {
@@ -919,6 +1019,7 @@ async function browserChecks() {
         });
         await phase('production desktop restriction', async () => {
             const desktop = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1280, height: 800 } });
+            await desktop.addInitScript(clockFixture);
             await desktop.addInitScript(workerFixture);
             await desktop.route('**/*', routeHandler);
             await desktop.addInitScript(() => localStorage.setItem('traintracks_welcome_seen', 'true'));
@@ -963,6 +1064,7 @@ async function browserChecks() {
         });
         await phase('production mobile cookie restriction', async () => {
             const cookies = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' });
+            await cookies.addInitScript(clockFixture);
             await cookies.addInitScript(workerFixture);
             await cookies.route('**/*', routeHandler);
             await cookies.addInitScript(() => Object.defineProperty(navigator, 'cookieEnabled', { get: () => false }));
@@ -976,6 +1078,7 @@ async function browserChecks() {
             await blocked.screenshot({ path: file }); output.screenshots.push(file);
             await cookies.close();
         });
+        }
         check('no uncaught page errors', output.errors.length === 0, output.errors);
         await context.close();
     } catch (error) { output.fatal = error.stack; } finally { await browser.close(); fs.writeFileSync(path.join(OUTPUT, 'results.json'), JSON.stringify(output, null, 2)); }
