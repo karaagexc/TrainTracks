@@ -76,6 +76,8 @@ Database scripts live in [`supabase/`](supabase/). Review schema history and gra
 
 OAuth PKCE callbacks remain on the initiating origin. Configure the exact `/auth/callback` URL for every approved host in Supabase's redirect allowlist. Server callbacks accept the two verified TrainTracks production aliases (`traintracks.vercel.app` and `traintracks-aaron-martinezs-projects-ea1c41f7.vercel.app`), the canonical `NEXT_PUBLIC_SITE_URL`, the exact platform `VERCEL_PROJECT_PRODUCTION_URL`, and comma-separated `AUTH_ALLOWED_ORIGINS`. Arbitrary `*.vercel.app` hosts and generated previews are not trusted. Loopback origins are allowed only outside production. A missing verifier fails visibly without forwarding the authorization code to another host. See [Supabase's PKCE contract](https://supabase.com/docs/guides/auth/sessions/pkce-flow).
 
+The reviewed repair Preview uses the stable host [traintracks-preview-aaron-martinezs-projects-ea1c41f7.vercel.app](https://traintracks-preview-aaron-martinezs-projects-ea1c41f7.vercel.app). Its exact origin is configured in Preview-only `AUTH_ALLOWED_ORIGINS`. Begin Google sign-in on that host, not an immutable generated deployment hostname or an old callback URL; PKCE verifier cookies cannot be moved between hosts. Reassign this Preview alias only to a reviewed deployment of this project. Supabase must also permit that exact host's `/auth/callback`; a real Google round trip remains a separate verification gate. Changing an environment variable requires a new deployment to use it. See [Vercel's Preview alias workflow](https://vercel.com/kb/guide/how-to-alias-a-preview-deployment-using-the-cli).
+
 ### Run Locally
 
 ```bash

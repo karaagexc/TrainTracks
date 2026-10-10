@@ -291,6 +291,38 @@ try {
         assert.equal(location.searchParams.get('reason'), 'pkce_verifier_missing');
     }
     await check(await callback.GET(new NextRequest('https://random-preview.vercel.app/auth/callback?code=fixture')), 400);
+
+    const previewOrigin = 'https://traintracks-preview-aaron-martinezs-projects-ea1c41f7.vercel.app';
+    process.env.AUTH_ALLOWED_ORIGINS = previewOrigin;
+    const exchangesBeforePreview = exchanges;
+    const missingVerifier = await callback.GET(new NextRequest(`${previewOrigin}/auth/callback?code=fixture&next=%2Fadmin`));
+    const retryLocation = new URL(missingVerifier.headers.get('location'));
+    assert.equal(missingVerifier.status, 307);
+    assert.equal(retryLocation.origin, previewOrigin);
+    assert.equal(retryLocation.pathname, '/login');
+    assert.equal(retryLocation.searchParams.get('reason'), 'pkce_verifier_missing');
+    assert.equal(retryLocation.searchParams.get('next'), '/admin');
+    assert.equal(missingVerifier.headers.get('cache-control'), 'no-store');
+    assert.equal(exchanges, exchangesBeforePreview, 'approved preview still requires its own PKCE verifier');
+
+    exchangeResult = { data: { session: { user } }, error: null };
+    const successfulPreview = await callback.GET(new NextRequest(`${previewOrigin}/auth/callback?code=fixture&next=%2Fadmin`, {
+        headers: { Cookie: 'sb-fixture-auth-token-code-verifier=fixture' },
+    }));
+    const successLocation = new URL(successfulPreview.headers.get('location'));
+    assert.equal(successfulPreview.status, 307);
+    assert.equal(successLocation.origin, previewOrigin);
+    assert.equal(successLocation.pathname, '/admin');
+    assert.equal(exchanges, exchangesBeforePreview + 1);
+    assert.equal(successfulPreview.headers.get('cache-control'), 'no-store');
+    for (const origin of ['https://random-preview.vercel.app', `${previewOrigin}.attacker.invalid`,
+        previewOrigin.replace('https:', 'http:')]) {
+        await check(await callback.GET(new NextRequest(`${origin}/auth/callback?code=fixture`, {
+            headers: { Cookie: 'sb-fixture-auth-token-code-verifier=fixture',
+                'X-Forwarded-Host': new URL(previewOrigin).host, 'X-Forwarded-Proto': 'https' },
+        })), 400);
+    }
+    assert.equal(exchanges, exchangesBeforePreview + 1, 'unapproved hosts cannot trigger code exchange, even with spoofed forwarding headers');
 } finally {
     for (const [key, value] of Object.entries(authEnvironment)) {
         if (value === undefined) delete process.env[key];

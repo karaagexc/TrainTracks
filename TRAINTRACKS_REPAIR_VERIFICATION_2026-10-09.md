@@ -213,8 +213,9 @@ on October 10, the existing sensitive `CARTO_BASEMAP_KEY` was extended to
 `production` and `preview`, preserving its value, type and production target.
 The same tested revision was rebuilt; both existing map themes now return PNG
 tiles successfully. No Supabase service-role/database secrets were copied to
-Preview. Preview authentication still needs its exact origin and Supabase
-callback allowlist, not a broad wildcard deployment trust rule.
+Preview. The stable Preview auth origin is now explicitly configured (see the
+follow-up below); Supabase redirect acceptance and a real Google round trip
+remain separate verification gates, not a broad wildcard deployment trust rule.
 
 Recorded rollback reference: production deployment
 `dpl_CUNpVsCk51C29dsfe7NbJY8kQG38`, revision `82c5d199`, ready before this repair.
@@ -280,7 +281,7 @@ before promoting this staged revision.
 
 ### Approved CARTO Preview Follow-Up
 
-Latest [protected Vercel Preview](https://traintracks-j78djeqyy-aaron-martinezs-projects-ea1c41f7.vercel.app)
+[CARTO-only protected Vercel Preview](https://traintracks-j78djeqyy-aaron-martinezs-projects-ea1c41f7.vercel.app)
 is **READY**, deployment `dpl_HZJRpJdLSbXQX3HJVgEhmdwzcubS`, source CLI, for the
 same tested application revision `b4aab15e86ea111c1b860a2dadb228d154435e69` and
 repair branch. It has no production aliases. All 429 uploaded source-file SHA-1
@@ -305,6 +306,56 @@ round trip. The key remains server-side; its value was not printed or committed.
 Production alias lookup still resolves to `dpl_CUNpVsCk51C29dsfe7NbJY8kQG38` with
 both existing production aliases. No production deployment, application data
 write, migration, maintenance change or main merge occurred in this follow-up.
+
+### Stable Preview Authentication Follow-Up
+
+The user encountered the documented origin error after Google returned to the
+generated CARTO-only preview hostname. The code correctly denied an unapproved
+origin, but the published preview did not yet have a usable allowlisted sign-in
+host. This was a release configuration failure, not evidence of missing admin
+authority or a reason to grant client-editable roles.
+
+Added non-secret `AUTH_ALLOWED_ORIGINS` to **Preview only**, with the single
+origin `https://traintracks-preview-aaron-martinezs-projects-ea1c41f7.vercel.app`.
+No existing auth allowlist was overwritten. Rebuilt the same tested application
+revision without cache and assigned a new dedicated stable Preview alias:
+[admin sign-in](https://traintracks-preview-aaron-martinezs-projects-ea1c41f7.vercel.app/admin).
+The alias resolves to **READY** deployment
+`dpl_9mjezkF2CqUgki83CgqadPfoFcfM`, immutable hostname
+`traintracks-hvr9rg98w-aaron-martinezs-projects-ea1c41f7.vercel.app`, exact commit
+`b4aab15e86ea111c1b860a2dadb228d154435e69` and repair branch. All 429 uploaded
+source-file hashes match the tested archive, with zero mismatches. The new cloud
+production/PWA build and TypeScript completed successfully; existing middleware,
+Edge-import and dependency warnings remain recorded, not dismissed.
+
+Read-only checks on the stable alias:
+
+| Surface | Result / interpretation |
+| --- | --- |
+| `/auth/callback?code=invalid-smoke-code`, no verifier cookie | 307 to the same origin's `/login?error=auth_callback_failed&reason=pkce_verifier_missing`; `no-store`, no authorization code forwarded, no session exchange |
+| `/admin`, `/api-console` | 200 HTML; not proof of authenticated admin success |
+| `/api/auth/admin` | 401 anonymous; server authorization remains enforced |
+| `/api/predictions` | 200; internal navigation remains available |
+| `/api/map-tiles/dark/12/3425/1879.png` | 200; approved CARTO configuration retained |
+| Same invalid callback on the generated immutable hostname | 400; unapproved origins are still rejected |
+
+The expanded API/auth/config regression suite passes. New cases cover the
+explicit Preview origin with and without a verifier, a mocked verified-session
+return to same-origin `/admin`, `no-store` handling, and rejection of unknown
+hosts, lookalike suffixes, wrong schemes and spoofed forwarding headers before
+code exchange. Scoped test-script lint passes without errors or warnings.
+These fixture successes do not certify hosted cookie propagation or real Google
+authentication; a fresh user-assisted sign-in and reload on the stable alias
+have been requested and are still awaiting confirmation. Old callback codes
+must not be reused or forwarded between hosts.
+
+Only the dedicated alias is approved for Preview sign-in. Generated deployment
+hostnames remain denied; changing Preview deployments does not justify trusting
+every `vercel.app` host. Production still resolves to
+`dpl_CUNpVsCk51C29dsfe7NbJY8kQG38` with both original production aliases. No
+production setting, migration, admin role, privileged secret, maintenance flag
+or production deployment was changed. Crowd/public-backend availability and
+the other production release gates are not resolved by this auth-origin change.
 
 ## Dependency Exposure
 
