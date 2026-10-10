@@ -208,11 +208,13 @@ redacted placeholders, which are not credentials. A local `SUPABASE_DB_URL` or
 user-applied reviewed SQL plus backup evidence is still required. Don't paste
 database credentials into chat or commit them.
 
-Vercel preview currently lacks the protected CARTO key. Extending its production
-target to preview was rejected by permission review because it expands secret
-use; no target change occurred. Approval or a separately configured preview key
-is required. Preview authentication needs its exact origin and Supabase callback
-allowlist, not a broad wildcard deployment trust rule.
+The initial preview lacked the protected CARTO key. After explicit user approval
+on October 10, the existing sensitive `CARTO_BASEMAP_KEY` was extended to
+`production` and `preview`, preserving its value, type and production target.
+The same tested revision was rebuilt; both existing map themes now return PNG
+tiles successfully. No Supabase service-role/database secrets were copied to
+Preview. Preview authentication still needs its exact origin and Supabase
+callback allowlist, not a broad wildcard deployment trust rule.
 
 Recorded rollback reference: production deployment
 `dpl_CUNpVsCk51C29dsfe7NbJY8kQG38`, revision `82c5d199`, ready before this repair.
@@ -236,7 +238,7 @@ rollback is safe merely because an application deployment can be restored.
 
 Draft review: [GitHub PR #1](https://github.com/karaagexc/TrainTracks/pull/1).
 Tested application revision: `b4aab15e86ea111c1b860a2dadb228d154435e69`.
-Staged [Vercel Preview](https://traintracks-44o4gvce6-aaron-martinezs-projects-ea1c41f7.vercel.app)
+Initial [Vercel Preview](https://traintracks-44o4gvce6-aaron-martinezs-projects-ea1c41f7.vercel.app)
 is **READY**, deployment `dpl_4teowhLteeJL2uTj5z45jFVZQSu3`, source CLI, with
 the exact tested commit/branch metadata and no production aliases. It is
 deployment-protected and is not a production-ready commuter release.
@@ -247,7 +249,7 @@ source manifest contains 429 matching SHA-1 hashes, zero mismatches; only
 `.gitignore` is intentionally omitted by upload handling. Neither unrelated
 user SVG is uploaded. This validates source identity, not every runtime feature.
 
-Read-only preview HTTP results:
+Initial read-only preview HTTP results, before the CARTO target approval:
 
 | Surface | Result / interpretation |
 | --- | --- |
@@ -263,8 +265,9 @@ Read-only preview HTTP results:
 
 Requests used Vercel's supported protection-aware CLI. It generated a project
 automation bypass token for the protected preview; no token value was printed
-or committed. No application writes, production migration, maintenance change,
-CARTO secret-target expansion, main merge or production promotion occurred.
+or committed. Those initial checks made no application writes, production
+migration, maintenance change, CARTO secret-target expansion, main merge or
+production promotion. The separately approved CARTO change is recorded below.
 The public app keys remain configured locally, but no `SUPABASE_DB_URL` is
 available for schema-management work. Do not copy production service-role
 credentials to previews merely to turn a failing check green.
@@ -274,6 +277,34 @@ browser writes were blocked/mocked, while hosted smoke requests were GET-only.
 Neither certifies real hosted OAuth cookies, Realtime transport, production
 permissions, physical GPS or complete pixel parity. Resolve the gates above
 before promoting this staged revision.
+
+### Approved CARTO Preview Follow-Up
+
+Latest [protected Vercel Preview](https://traintracks-j78djeqyy-aaron-martinezs-projects-ea1c41f7.vercel.app)
+is **READY**, deployment `dpl_HZJRpJdLSbXQX3HJVgEhmdwzcubS`, source CLI, for the
+same tested application revision `b4aab15e86ea111c1b860a2dadb228d154435e69` and
+repair branch. It has no production aliases. All 429 uploaded source-file SHA-1
+hashes again match the verified archive, with zero mismatches and no unrelated
+user SVGs. The follow-up changes environment targeting and release evidence,
+not application code.
+
+GET-only checks on this rebuilt preview:
+
+| Surface | Result / interpretation |
+| --- | --- |
+| `/`, `/api/predictions` | 200; root page and internal predictions remain available |
+| `/api/map-tiles/dark/12/3425/1879.png` | 200 `image/png`, 26,585 bytes; inspected existing dark CARTO tile |
+| `/api/map-tiles/voyager/12/3425/1879.png` | 200 `image/png`, 41,382 bytes; inspected existing light CARTO tile |
+| `/api/crowd/presence` | 503; privileged preview backend configuration remains unavailable |
+| `/api/public/predictions` | 503; public API hosted availability remains uncertified |
+| `/auth/callback?code=invalid-smoke-code` | 400; preview origin is not allowlisted, and no session was established |
+
+These image checks resolve the preview key/tile availability failure; they do
+not replace browser pan/zoom checks, certify every tile, or complete the Google
+round trip. The key remains server-side; its value was not printed or committed.
+Production alias lookup still resolves to `dpl_CUNpVsCk51C29dsfe7NbJY8kQG38` with
+both existing production aliases. No production deployment, application data
+write, migration, maintenance change or main merge occurred in this follow-up.
 
 ## Dependency Exposure
 
