@@ -42,7 +42,7 @@ const { buildLocationSample, diagnoseLocationStatus, LOCATION_STALE_MS, shouldSh
 const { measureGpsSpeed, smoothGpsSpeed } = require('../src/domain/location/speed.ts');
 const { filterGpsPosition } = require('../src/domain/location/gpsFilter.ts');
 const { getAdaptiveCrowdReportMs, getAdaptivePredictionPollMs, shouldUsePredictionStream } = require('../src/domain/network/runtime.ts');
-const { evaluateWrongDirectionEvidence } = require('../src/domain/alerts/wrongDirection.ts');
+const { evaluateWrongDirectionEvidence, isWrongDirectionSampleEligible } = require('../src/domain/alerts/wrongDirection.ts');
 const { decideFallbackStart, stepFallbackLocation } = require('../src/domain/journey/fallback.ts');
 const { buildSimulationRoute, getSimulationLegProfile, stepSimulationLeg } = require('../src/domain/simulation/engine.ts');
 const { moveTowards } = require('../src/utils/geo.ts');
@@ -119,8 +119,8 @@ assert.equal(
         'https://traintracks.vercel.app',
         false,
     ),
-    'https://traintracks.vercel.app',
-    'a fallback callback without a verifier returns to the canonical OAuth origin',
+    'https://traintracks-aaron-martinezs-projects-ea1c41f7.vercel.app',
+    'a missing verifier cannot send a one-time authorization code to another origin',
 );
 assert.equal(
     resolveAuthCodeExchangeOrigin(
@@ -143,6 +143,9 @@ assert.equal(
 assert.equal(sanitizeAuthReturnTo('/admin'), '/admin');
 assert.equal(sanitizeAuthReturnTo('https://evil.example/admin'), '/');
 assert.equal(sanitizeAuthReturnTo('//evil.example/admin'), '/');
+assert.equal(sanitizeAuthReturnTo('/api/trips?token=fixture'), '/');
+assert.equal(sanitizeAuthReturnTo('/auth/callback?code=fixture'), '/');
+assert.equal(sanitizeAuthReturnTo('/unknown'), '/');
 assert.equal(readAuthReturnToCookie('%2Fapi-console'), '/api-console');
 assert.equal(
     buildAuthFailurePath('/admin'),
@@ -360,7 +363,7 @@ const slowNetwork = { saveData: false, effectiveType: '2g' };
 assert.equal(shouldUsePredictionStream(fastNetwork), false, 'commuter client uses bounded polling even on fast networks');
 assert.equal(shouldUsePredictionStream(dataSaverNetwork), false, 'data saver uses bounded prediction polling');
 assert.equal(shouldUsePredictionStream(slowNetwork), false, '2G avoids a continuous prediction stream');
-assert.equal(getAdaptivePredictionPollMs(dataSaverNetwork), 30_000);
+assert.equal(getAdaptivePredictionPollMs(dataSaverNetwork), 1_000, 'foreground rail predictions retain the requested one-second cadence, including data saver');
 assert.equal(getAdaptiveCrowdReportMs(slowNetwork), 15_000, '2G crowd reports use the mobile-data-friendly interval');
 
 const fallbackSample = buildLocationSample({
@@ -384,6 +387,10 @@ const fallbackSample = buildLocationSample({
     accuracyMeters: 80,
 }, now);
 assert.equal(fallbackSample?.source, 'fallback', 'fallback sample keeps fallback source');
+assert.equal(isWrongDirectionSampleEligible(fallbackSample, now), false, 'estimates never qualify as opposite-direction GPS evidence');
+const eligibleHeadingSample = { ...fallbackSample, source: 'gps', speedKph: 30, accuracyMeters: 5, rawHeading: 180 };
+assert.equal(isWrongDirectionSampleEligible(eligibleHeadingSample, now), true);
+assert.equal(isWrongDirectionSampleEligible(eligibleHeadingSample, now + 6000), false, 'stale headings cannot confirm a wrong-direction warning');
 
 const wrongDirection = evaluateWrongDirectionEvidence(
     { latitude: 14.53, longitude: 121.0 },
@@ -539,14 +546,14 @@ const lrt2SjtFare = getFareQuote(station('L2-01'), station('L2-02'), 'SJT', fare
 assert.equal(lrt2SjtFare.total, 8, 'LRT-2 SJT applies the active 50% policy with whole-peso rounding');
 assert.equal(lrt2SjtFare.baseTotal, 15);
 assert.equal(lrt2SjtFare.policies[0]?.status, 'active_until_further_notice');
-assert.equal(lrt2SjtFare.policies[0]?.lastVerifiedAt, '2026-08-10');
+assert.equal(lrt2SjtFare.policies[0]?.lastVerifiedAt, '2026-10-09');
 
 const lrt2SvcFare = getFareQuote(station('L2-01'), station('L2-02'), 'SVC', farePolicyNow);
 assert.equal(lrt2SvcFare.total, 7.5, 'LRT-2 stored value applies half-peso rounding');
 assert.equal(getFareQuote(station('L2-01'), station('L2-02'), 'CONCESSION', farePolicyNow).total, 7.5, 'white-card discounts do not stack with the all-passenger relief');
 
 const mrt3Fare = getFareQuote(station('M3-01'), station('M3-02'), 'SJT', farePolicyNow);
-assert.equal(mrt3Fare.total, 7, 'MRT-3 SJT applies the current all-passenger relief');
+assert.equal(mrt3Fare.total, 6, 'MRT-3 SJT uses the published 13-to-6 all-passenger relief band');
 
 const lrt1Fare = getFareQuote(station('L1-25'), station('L1-24'), 'SJT', farePolicyNow);
 assert.equal(lrt1Fare.total, 20, 'LRT-1 remains on its April 2025 matrix');

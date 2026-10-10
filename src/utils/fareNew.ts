@@ -26,6 +26,8 @@ export interface FareSegmentQuote {
     paymentMedium: 'single_journey' | 'stored_value' | 'bus';
     policyId: string | null;
     sourceRefs: string[];
+    verification: 'verified' | 'unverified';
+    verificationNote: string | null;
 }
 
 export interface FareQuote {
@@ -65,6 +67,8 @@ function getMatrixFareQuote(
         policyId: null,
         policy: null,
         sourceRefs: [],
+        verification: from.id === to.id ? 'verified' : 'unverified',
+        verificationNote: from.id === to.id ? null : 'No verified fare matrix cell is available for this journey segment.',
     };
 
     if (from.id === to.id) return emptyQuote;
@@ -76,6 +80,8 @@ function getMatrixFareQuote(
             amount,
             baseAmount: amount,
             paymentMedium: 'bus',
+            verification: 'verified',
+            verificationNote: null,
             sourceRefs: [
                 'https://pia.gov.ph/news/puv-fares-adjusted-to-shield-drivers-commuters/',
             ],
@@ -93,17 +99,21 @@ function getMatrixFareQuote(
         paymentMedium: effectiveFare.paymentMedium,
         policyId: effectiveFare.policy?.id ?? null,
         policy: effectiveFare.policy,
+        verification: effectiveFare.verification,
+        verificationNote: effectiveFare.verificationNote,
         sourceRefs: effectiveFare.policy?.sourceRefs
             ?? BASE_RAIL_FARE_SOURCE_REFS[from.lineId]
             ?? [],
     };
 }
 
-function getRouteFareSegments(route: Station[]): Array<{ lineId: LineId; from: Station; to: Station }> {
+function getRouteFareSegments(route: Station[]): Array<{ lineId: LineId; from: Station; to: Station; reverses: boolean }> {
     if (route.length < 2) return [];
 
-    const segments: Array<{ lineId: LineId; from: Station; to: Station }> = [];
+    const segments: Array<{ lineId: LineId; from: Station; to: Station; reverses: boolean }> = [];
     let segmentStart = route[0];
+    let segmentDirection = 0;
+    let reverses = false;
 
     for (let i = 1; i < route.length; i++) {
         const previous = route[i - 1];
@@ -114,8 +124,15 @@ function getRouteFareSegments(route: Station[]): Array<{ lineId: LineId; from: S
                 lineId: previous.lineId,
                 from: segmentStart,
                 to: previous,
+                reverses,
             });
             segmentStart = current;
+            segmentDirection = 0;
+            reverses = false;
+        } else {
+            const stepDirection = Math.sign(current.order - previous.order);
+            if (stepDirection && segmentDirection && stepDirection !== segmentDirection) reverses = true;
+            if (stepDirection) segmentDirection = stepDirection;
         }
     }
 
@@ -124,24 +141,29 @@ function getRouteFareSegments(route: Station[]): Array<{ lineId: LineId; from: S
         lineId: lastStation.lineId,
         from: segmentStart,
         to: lastStation,
+        reverses,
     });
 
     return segments;
 }
 
-export const getFareQuote = (
-    origin: Station,
-    current: Station,
+export const getFareQuoteForRoute = (
+    route: Station[],
     ticketType: TicketType,
     at = Date.now(),
 ): FareQuote => {
-    if (!origin || !current || origin.id === current.id) {
+    if (route.length < 2) {
         return { total: 0, baseTotal: 0, segments: [], policies: [] };
     }
-
-    const route = getRoute(origin, current);
     const calculations = getRouteFareSegments(route)
-        .map((segment) => getMatrixFareQuote(segment.from, segment.to, ticketType, at));
+        .map((segment) => {
+            const calculation = getMatrixFareQuote(segment.from, segment.to, ticketType, at);
+            if (segment.reverses && segment.lineId !== 'EDSA') {
+                return { ...calculation, verification: 'unverified' as const,
+                    verificationNote: 'This amended route reverses within one paid rail journey. The endpoint fare is not a verified charge; confirm the ticket rules with the operator.' };
+            }
+            return calculation;
+        });
     const policyMap = new Map<string, FarePolicy>();
 
     for (const calculation of calculations) {
@@ -157,6 +179,13 @@ export const getFareQuote = (
     };
 };
 
+export const getFareQuote = (
+    origin: Station,
+    current: Station,
+    ticketType: TicketType,
+    at = Date.now(),
+): FareQuote => getFareQuoteForRoute(origin && current ? getRoute(origin, current) : [], ticketType, at);
+
 export const getPrecisionFare = (
     origin: Station,
     current: Station,
@@ -168,11 +197,13 @@ export const getFareBreakdown = (
     origin: Station,
     current: Station,
     ticketType: TicketType,
+    route?: Station[],
+    at = Date.now(),
 ): FareBreakdown => {
     const breakdown: FareBreakdown = { lrt1: 0, lrt2: 0, mrt3: 0, mrt7: 0, edsa: 0, total: 0 };
     if (!origin || !current) return breakdown;
 
-    const quote = getFareQuote(origin, current, ticketType);
+    const quote = route ? getFareQuoteForRoute(route, ticketType, at) : getFareQuote(origin, current, ticketType, at);
     for (const segment of quote.segments) {
         const key = LINE_BREAKDOWN_KEY[segment.lineId];
         breakdown[key] += segment.amount;

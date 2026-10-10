@@ -97,6 +97,7 @@ export function StationInfoModal({ station, open, onClose }: StationInfoModalPro
                     {/* ─── Close Button ─── */}
                     <button
                         onClick={onClose}
+                        aria-label="Close station information"
                         className="absolute top-3 right-3 z-50 p-1.5 rounded-full bg-black/50 backdrop-blur-md text-white/80 hover:text-white hover:bg-black/70 transition-all"
                     >
                         <X className="w-4 h-4" />
@@ -136,12 +137,14 @@ export function StationInfoModal({ station, open, onClose }: StationInfoModalPro
                             <>
                                 <button
                                     onClick={() => goToImage('prev')}
+                                    aria-label="Previous station image"
                                     className="absolute left-2 top-1/2 -translate-y-1/2 z-30 p-1 rounded-full bg-black/40 backdrop-blur-sm text-white/70 hover:text-white hover:bg-black/60 transition-all"
                                 >
                                     <ChevronLeft className="w-4 h-4" />
                                 </button>
                                 <button
                                     onClick={() => goToImage('next')}
+                                    aria-label="Next station image"
                                     className="absolute right-2 top-1/2 -translate-y-1/2 z-30 p-1 rounded-full bg-black/40 backdrop-blur-sm text-white/70 hover:text-white hover:bg-black/60 transition-all"
                                 >
                                     <ChevronRight className="w-4 h-4" />
@@ -152,6 +155,7 @@ export function StationInfoModal({ station, open, onClose }: StationInfoModalPro
                                         <button
                                             key={i}
                                             onClick={() => setCurrentImageIndex(i)}
+                                            aria-label={`Station image ${i + 1}`}
                                             disabled={failedImageIndexes.has(i)}
                                             className={cn(
                                                 "w-1.5 h-1.5 rounded-full transition-all duration-300",

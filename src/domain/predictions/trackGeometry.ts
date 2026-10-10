@@ -3,13 +3,13 @@ import lrt2Data from '@/data/lrt2.json';
 import mrt3Data from '@/data/mrt3.json';
 import mrt7Data from '@/data/mrt7.json';
 import { getSegmentDistance } from '@/data/segmentDistances';
+import { STATIONS } from '@/data/stations';
 import type { Coordinates, LineId, Station } from '@/types';
 import { getDistanceKm } from '@/utils/geo';
-import { projectLocationToPolyline } from '@/domain/location/polyline';
+import { getPolylineLengthMeters, projectLocationToPolyline } from '@/domain/location/polyline';
 
 type TrackPoint = Coordinates & { key: string };
 type TrackEdge = { to: string; distanceKm: number };
-type CandidateNode = { key: string; point: TrackPoint; snapDistanceKm: number };
 type TrackGraph = {
     nodes: Map<string, TrackPoint>;
     edges: Map<string, TrackEdge[]>;
@@ -25,9 +25,11 @@ const LINE_GEOJSON: Partial<Record<LineId, any>> = {
 
 const graphCache = new Map<LineId, TrackGraph>();
 const pathCache = new Map<string, TrackPoint[] | null>();
-const SNAP_CANDIDATE_LIMIT = 14;
+const linePathCache = new Map<LineId, TrackPoint[] | null>();
+const stationAnchorCache = new Map<string, TrackPoint | null>();
+const publicPathCache = new Map<string, Coordinates[] | null>();
+const pathMetricsCache = new WeakMap<TrackPoint[], { segmentDistances: number[]; totalDistance: number }>();
 const MAX_SNAP_DISTANCE_KM = 0.85;
-const SNAP_DISTANCE_PENALTY = 4;
 
 function pointKey(point: Coordinates): string {
     return `${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}`;
@@ -131,20 +133,43 @@ function getLargestComponent(graph: TrackGraph): Set<string> {
     return largest;
 }
 
-function nearestNodeCandidates(graph: TrackGraph, target: Coordinates): CandidateNode[] {
-    const candidates: CandidateNode[] = [];
+function getStationAnchor(graph: TrackGraph, lineId: LineId, station: Station): TrackPoint | null {
+    const cacheKey = `${lineId}:${station.id}`;
+    if (stationAnchorCache.has(cacheKey)) return stationAnchorCache.get(cacheKey) ?? null;
 
-    graph.nodes.forEach((point, key) => {
-        if (graph.mainNodeKeys.size > 0 && !graph.mainNodeKeys.has(key)) return;
-        const distance = getDistanceKm(point, target);
-        if (distance <= MAX_SNAP_DISTANCE_KM) {
-            candidates.push({ key, point, snapDistanceKm: distance });
+    let closest: { from: TrackPoint; to: TrackPoint; location: Coordinates; distance: number } | null = null;
+    for (const [fromKey, edges] of graph.edges) {
+        if (graph.mainNodeKeys.size && !graph.mainNodeKeys.has(fromKey)) continue;
+        const from = graph.nodes.get(fromKey)!;
+        for (const edge of edges) {
+            if (fromKey > edge.to) continue;
+            const to = graph.nodes.get(edge.to)!;
+            const projection = projectLocationToPolyline(station, [from, to]);
+            if (projection && (!closest || projection.distanceFromPathMeters < closest.distance)) {
+                closest = { from, to, location: projection.location, distance: projection.distanceFromPathMeters };
+            }
         }
-    });
+    }
+    if (!closest || closest.distance > MAX_SNAP_DISTANCE_KM * 1000) {
+        stationAnchorCache.set(cacheKey, null);
+        return null;
+    }
 
-    return candidates
-        .sort((left, right) => left.snapDistanceKm - right.snapDistanceKm)
-        .slice(0, SNAP_CANDIDATE_LIMIT);
+    // Split the actual rail segment at the platform projection, not a nearby vertex.
+    const anchor = { ...closest.location, key: pointKey(closest.location) };
+    const existing = graph.nodes.get(anchor.key);
+    if (existing) {
+        stationAnchorCache.set(cacheKey, existing);
+        return existing;
+    }
+    addNode(graph, anchor);
+    graph.mainNodeKeys.add(anchor.key);
+    graph.edges.set(closest.from.key, graph.edges.get(closest.from.key)!.filter((edge) => edge.to !== closest.to.key));
+    graph.edges.set(closest.to.key, graph.edges.get(closest.to.key)!.filter((edge) => edge.to !== closest.from.key));
+    addEdge(graph, closest.from, anchor);
+    addEdge(graph, anchor, closest.to);
+    stationAnchorCache.set(cacheKey, anchor);
+    return anchor;
 }
 
 function shortestPath(graph: TrackGraph, startKey: string, endKey: string): { path: TrackPoint[]; distanceKm: number } | null {
@@ -213,31 +238,50 @@ function getMaxReasonablePathKm(from: Station, to: Station): number {
     return Math.max(expectedKm * 1.8, expectedKm + 0.9);
 }
 
-function chooseCandidatePath(graph: TrackGraph, from: Station, to: Station): TrackPoint[] | null {
-    const starts = nearestNodeCandidates(graph, from);
-    const ends = nearestNodeCandidates(graph, to);
-    const maxPathKm = getMaxReasonablePathKm(from, to);
-    let bestPath: TrackPoint[] | null = null;
-    let bestScore = Number.POSITIVE_INFINITY;
-
-    for (const start of starts) {
-        for (const end of ends) {
-            const result = shortestPath(graph, start.key, end.key);
-            if (!result || result.path.length < 2) continue;
-            if (result.distanceKm > maxPathKm) continue;
-
-            const score = result.distanceKm
-                + start.snapDistanceKm * SNAP_DISTANCE_PENALTY
-                + end.snapDistanceKm * SNAP_DISTANCE_PENALTY;
-
-            if (score < bestScore) {
-                bestPath = result.path;
-                bestScore = score;
+function getLinePath(lineId: LineId): TrackPoint[] | null {
+    if (linePathCache.has(lineId)) return linePathCache.get(lineId) ?? null;
+    const graph = buildTrackGraph(lineId);
+    const stations = STATIONS.filter((station) => station.lineId === lineId).sort((a, b) => a.order - b.order);
+    if (!graph || stations.length < 2) return null;
+    const start = getStationAnchor(graph, lineId, stations[0]);
+    const end = getStationAnchor(graph, lineId, stations.at(-1)!);
+    const result = start && end ? shortestPath(graph, start.key, end.key) : null;
+    let path: TrackPoint[] | null = result?.path ?? null;
+    const expectedKm = stations.slice(1).reduce((sum, station, index) => (
+        sum + getExpectedSegmentDistanceKm(stations[index], station)
+    ), 0);
+    if (!path || path.length < 2 || result!.distanceKm > expectedKm * 1.8) path = null;
+    if (path) {
+        let previousDistance = -1;
+        for (const station of stations) {
+            const projection = projectLocationToPolyline(station, path);
+            if (!projection || projection.distanceFromPathMeters > MAX_SNAP_DISTANCE_KM * 1000
+                || projection.distanceAlongMeters <= previousDistance) {
+                path = null;
+                break;
             }
+            previousDistance = projection.distanceAlongMeters;
         }
     }
+    linePathCache.set(lineId, path);
+    return path;
+}
 
-    return bestPath;
+function chooseCandidatePath(lineId: LineId, from: Station, to: Station): TrackPoint[] | null {
+    const spine = getLinePath(lineId);
+    if (!spine) return null;
+    const fromProjection = projectLocationToPolyline(from, spine);
+    const toProjection = projectLocationToPolyline(to, spine);
+    if (!fromProjection || !toProjection || Math.max(fromProjection.distanceFromPathMeters,
+        toProjection.distanceFromPathMeters) > MAX_SNAP_DISTANCE_KM * 1000) return null;
+    const reverse = fromProjection.distanceAlongMeters > toProjection.distanceAlongMeters;
+    const start = reverse ? toProjection : fromProjection;
+    const end = reverse ? fromProjection : toProjection;
+    // A single validated rail spine prevents nearby parallel tracks from routing through a terminal loop.
+    const points = [start.location, ...spine.slice(start.segmentIndex + 1, end.segmentIndex + 1), end.location];
+    const path = points.map((point) => ({ ...point, key: pointKey(point) }));
+    if (getPolylineLengthMeters(path) > getMaxReasonablePathKm(from, to) * 1000) return null;
+    return reverse ? path.reverse() : path;
 }
 
 function getPath(lineId: LineId, from: Station, to: Station): TrackPoint[] | null {
@@ -246,13 +290,7 @@ function getPath(lineId: LineId, from: Station, to: Station): TrackPoint[] | nul
         return pathCache.get(cacheKey) ?? null;
     }
 
-    const graph = buildTrackGraph(lineId);
-    if (!graph) {
-        pathCache.set(cacheKey, null);
-        return null;
-    }
-
-    const path = chooseCandidatePath(graph, from, to);
+    const path = chooseCandidatePath(lineId, from, to);
     pathCache.set(cacheKey, path);
     return path;
 }
@@ -269,8 +307,13 @@ export function getTrackGeometryPosition(lineId: LineId, from: Station, to: Stat
     if (!path || path.length < 2) return null;
 
     const clamped = Math.max(0, Math.min(1, progress));
-    const segmentDistances = path.slice(1).map((point, index) => getDistanceKm(path[index], point));
-    const totalDistance = segmentDistances.reduce((sum, distance) => sum + distance, 0);
+    let metrics = pathMetricsCache.get(path);
+    if (!metrics) {
+        const segmentDistances = path.slice(1).map((point, index) => getDistanceKm(path[index], point));
+        metrics = { segmentDistances, totalDistance: segmentDistances.reduce((sum, distance) => sum + distance, 0) };
+        pathMetricsCache.set(path, metrics);
+    }
+    const { segmentDistances, totalDistance } = metrics;
     if (totalDistance <= 0) return null;
 
     let targetDistance = totalDistance * clamped;
@@ -294,32 +337,19 @@ export function getTrackGeometryPath(
     from: Station,
     to: Station,
 ): Coordinates[] | null {
+    const cacheKey = `${lineId}:${from.id}:${to.id}`;
+    if (publicPathCache.has(cacheKey)) return publicPathCache.get(cacheKey) ?? null;
     const path = getPath(lineId, from, to);
     if (!path || path.length < 2) return null;
-    return path.map(({ latitude, longitude }) => ({ latitude, longitude }));
+    const coordinates = path.map(({ latitude, longitude }) => ({ latitude, longitude }));
+    publicPathCache.set(cacheKey, coordinates);
+    return coordinates;
 }
 
 export function getDistanceFromLineTrackMeters(
     lineId: LineId,
     location: Coordinates,
 ): number | null {
-    const graph = buildTrackGraph(lineId);
-    if (!graph) return null;
-
-    let minimum = Number.POSITIVE_INFINITY;
-    graph.edges.forEach((edges, fromKey) => {
-        const from = graph.nodes.get(fromKey);
-        if (!from || (graph.mainNodeKeys.size > 0 && !graph.mainNodeKeys.has(fromKey))) return;
-        edges.forEach((edge) => {
-            if (fromKey > edge.to) return;
-            const to = graph.nodes.get(edge.to);
-            if (!to) return;
-            const projection = projectLocationToPolyline(location, [from, to]);
-            if (projection) {
-                minimum = Math.min(minimum, projection.distanceFromPathMeters);
-            }
-        });
-    });
-
-    return Number.isFinite(minimum) ? minimum : null;
+    const path = getLinePath(lineId);
+    return path ? projectLocationToPolyline(location, path)?.distanceFromPathMeters ?? null : null;
 }

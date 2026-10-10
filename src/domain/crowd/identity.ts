@@ -13,3 +13,7 @@ export function createCrowdPseudonym(
         .digest('hex')
         .slice(0, 20);
 }
+
+export function createCrowdSampleIdentity(sampleId: string, pseudonym: string, secret: string): string {
+    return `cs-${createHmac('sha256', secret).update(`sample:${pseudonym}:${sampleId}`).digest('hex').slice(0, 32)}`;
+}

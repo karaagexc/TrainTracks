@@ -89,11 +89,11 @@ export function WelcomeScreen() {
                                         </li>
                                         <li className="flex gap-2">
                                             <span className="text-emerald-500">•</span>
-                                            <span><strong className="text-zinc-300">Hybrid Positioning</strong> fuses GPS with accelerometer data for tunnel navigation.</span>
+                                            <span><strong className="text-zinc-300">Estimated Positioning</strong> uses the last trusted GPS fix during brief signal loss.</span>
                                         </li>
                                         <li className="flex gap-2">
                                             <span className="text-amber-500">•</span>
-                                            <span><strong className="text-zinc-300">Background Service Worker</strong> ensures you never miss a stop even when locked.</span>
+                                            <span><strong className="text-zinc-300">Stop Alerts</strong> depend on location access and device background limits.</span>
                                         </li>
                                     </ul>
                                 </div>

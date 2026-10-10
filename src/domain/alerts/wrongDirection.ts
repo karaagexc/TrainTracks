@@ -1,4 +1,4 @@
-import type { Coordinates, Station } from '@/types';
+import type { Coordinates, LocationSample, Station } from '@/types';
 import { getBearing, getDistanceKm } from '@/utils/geo';
 
 export const WRONG_DIRECTION_CONFIG = {
@@ -10,6 +10,18 @@ export const WRONG_DIRECTION_CONFIG = {
     targetOvershootKm: 0.25,
     snoozeMs: 300_000,
 } as const;
+
+export function isWrongDirectionSampleEligible(sample: LocationSample, now = Date.now()): boolean {
+    return sample.source === 'gps' && sample.location !== null
+        && Number.isFinite(sample.location.latitude) && Number.isFinite(sample.location.longitude)
+        && sample.timestamp !== null && Number.isFinite(sample.timestamp)
+        && Math.abs(now - sample.timestamp) <= 5000
+        && sample.rawHeading !== null && Number.isFinite(sample.rawHeading)
+        && sample.speedKph !== null && Number.isFinite(sample.speedKph)
+        && sample.speedKph >= WRONG_DIRECTION_CONFIG.minSpeedKph && sample.speedKph <= 180
+        && sample.accuracyMeters !== null && sample.accuracyMeters >= 0
+        && sample.accuracyMeters <= WRONG_DIRECTION_CONFIG.maxGpsAccuracyMeters;
+}
 
 export function angleDifference(left: number, right: number): number {
     const diff = Math.abs(left - right);

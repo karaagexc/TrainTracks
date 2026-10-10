@@ -8,9 +8,10 @@ import {
 } from '@/domain/offline/indexedDb';
 import {
     getCheckpointDisposition,
-    isActiveTripCheckpoint,
+    parseActiveTripCheckpoint,
     isPersistedTripPreferences,
     TRIP_CHECKPOINT_KEY,
+    LEGACY_TRIP_CHECKPOINT_KEY,
     TRIP_CHECKPOINT_VERSION,
     TRIP_PREFERENCES_KEY,
     type ActiveTripCheckpoint,
@@ -56,6 +57,7 @@ function buildCheckpoint(): ActiveTripCheckpoint | null {
 
     return {
         version: TRIP_CHECKPOINT_VERSION,
+        ownerId: state.tripOwnerId,
         savedAt: Date.now(),
         tripStartedAt: state.tripStartedAt,
         originId: state.origin.id,
@@ -76,12 +78,28 @@ export function useTripPersistence() {
         let unsubscribe: (() => void) | null = null;
         let preferenceTimer: number | null = null;
         let checkpointTimer: number | null = null;
+        let initialized = false;
+        let preferencesReadable = false;
+        let checkpointsReadable = false;
 
-        const persistPreferences = () => writeRuntimeValue(TRIP_PREFERENCES_KEY, buildPreferences());
+        const reportStorageFailure = (error: unknown) => {
+            const message = error instanceof Error ? error.message : 'Trip recovery storage is unavailable.';
+            useTripStore.getState().setPersistenceError(message);
+            console.warn('[TripPersistence] Recovery could not be saved:', error);
+        };
+        const safely = (operation: Promise<unknown>) => { void operation.catch(reportStorageFailure); };
+
+        const persistPreferences = async () => {
+            if (!initialized || !preferencesReadable) return;
+            await writeRuntimeValue(TRIP_PREFERENCES_KEY, buildPreferences());
+        };
         const persistCheckpoint = async () => {
+            // A failed read is unknown data, not permission to replace or delete it.
+            if (!initialized || !checkpointsReadable) return;
             const checkpoint = buildCheckpoint();
             if (checkpoint) {
                 await writeRuntimeValue(TRIP_CHECKPOINT_KEY, checkpoint);
+                useTripStore.getState().setPersistenceError(null);
                 return;
             }
             const state = useTripStore.getState();
@@ -94,23 +112,37 @@ export function useTripPersistence() {
             if (preferenceTimer !== null) return;
             preferenceTimer = window.setTimeout(() => {
                 preferenceTimer = null;
-                void persistPreferences();
+                safely(persistPreferences());
             }, 250);
         };
         const scheduleCheckpoint = () => {
             if (checkpointTimer !== null) return;
             checkpointTimer = window.setTimeout(() => {
                 checkpointTimer = null;
-                void persistCheckpoint();
+                safely(persistCheckpoint());
             }, 2000);
         };
 
         const initialize = async () => {
-            const [storedPreferences, storedCheckpoint] = await Promise.all([
-                readRuntimeValue<unknown>(TRIP_PREFERENCES_KEY),
-                readRuntimeValue<unknown>(TRIP_CHECKPOINT_KEY),
+            const readSafely = async (key: string) => {
+                try {
+                    return { readable: true, value: await readRuntimeValue<unknown>(key) };
+                } catch (error) {
+                    reportStorageFailure(error);
+                    return { readable: false, value: null };
+                }
+            };
+            const [preferencesRead, checkpointRead, legacyRead] = await Promise.all([
+                readSafely(TRIP_PREFERENCES_KEY),
+                readSafely(TRIP_CHECKPOINT_KEY),
+                readSafely(LEGACY_TRIP_CHECKPOINT_KEY),
             ]);
             if (cancelled) return;
+            preferencesReadable = preferencesRead.readable;
+            checkpointsReadable = checkpointRead.readable && legacyRead.readable;
+            const storedPreferences = preferencesRead.value;
+            const storedCheckpoint = checkpointRead.value;
+            const legacyCheckpoint = legacyRead.value;
 
             useTripStore.getState().hydratePreferences(
                 isPersistedTripPreferences(storedPreferences)
@@ -118,16 +150,29 @@ export function useTripPersistence() {
                     : DEFAULT_PREFERENCES,
             );
 
-            if (isActiveTripCheckpoint(storedCheckpoint)) {
-                const disposition = getCheckpointDisposition(storedCheckpoint);
+            const checkpoint = parseActiveTripCheckpoint(storedCheckpoint) ?? parseActiveTripCheckpoint(legacyCheckpoint);
+            if (checkpoint) {
+                const disposition = getCheckpointDisposition(checkpoint);
                 if (disposition === 'auto_resume') {
-                    useTripStore.getState().restoreTripCheckpoint(storedCheckpoint);
+                    useTripStore.getState().restoreTripCheckpoint(checkpoint);
                 } else if (disposition === 'prompt') {
-                    useTripStore.getState().setPendingTripRecovery(storedCheckpoint);
-                } else {
-                    await deleteRuntimeValue(TRIP_CHECKPOINT_KEY);
+                    useTripStore.getState().setPendingTripRecovery(checkpoint);
+                } else if (checkpointsReadable) {
+                    safely(deleteRuntimeValue(TRIP_CHECKPOINT_KEY));
+                }
+                if (checkpointsReadable && !parseActiveTripCheckpoint(storedCheckpoint) && disposition !== 'expired') {
+                    safely(writeRuntimeValue(TRIP_CHECKPOINT_KEY, checkpoint).then(() => (
+                        deleteRuntimeValue(LEGACY_TRIP_CHECKPOINT_KEY)
+                    )));
+                } else if (checkpointsReadable && legacyCheckpoint) {
+                    safely(deleteRuntimeValue(LEGACY_TRIP_CHECKPOINT_KEY));
                 }
             }
+            if (checkpointsReadable && !checkpoint) {
+                if (legacyCheckpoint) safely(deleteRuntimeValue(LEGACY_TRIP_CHECKPOINT_KEY));
+                if (storedCheckpoint) safely(deleteRuntimeValue(TRIP_CHECKPOINT_KEY));
+            }
+            initialized = true;
 
             let previousPending = useTripStore.getState().pendingTripRecovery;
             unsubscribe = useTripStore.subscribe((state, previous) => {
@@ -152,20 +197,20 @@ export function useTripPersistence() {
                     scheduleCheckpoint();
                 }
 
-                if (previousPending && !state.pendingTripRecovery && state.status === 'IDLE') {
-                    void deleteRuntimeValue(TRIP_CHECKPOINT_KEY);
+                if (checkpointsReadable && previousPending && !state.pendingTripRecovery && state.status === 'IDLE') {
+                    safely(deleteRuntimeValue(TRIP_CHECKPOINT_KEY));
                 }
                 previousPending = state.pendingTripRecovery;
             });
         };
 
-        const flushOnHide = () => {
-            if (document.visibilityState !== 'hidden') return;
-            void persistPreferences();
-            void persistCheckpoint();
+        const flushOnHide = (event: Event) => {
+            if (event.type !== 'pagehide' && document.visibilityState !== 'hidden') return;
+            safely(persistPreferences());
+            safely(persistCheckpoint());
         };
 
-        void initialize();
+        safely(initialize());
         document.addEventListener('visibilitychange', flushOnHide);
         window.addEventListener('pagehide', flushOnHide);
 
@@ -176,8 +221,8 @@ export function useTripPersistence() {
             if (checkpointTimer !== null) window.clearTimeout(checkpointTimer);
             document.removeEventListener('visibilitychange', flushOnHide);
             window.removeEventListener('pagehide', flushOnHide);
-            void persistPreferences();
-            void persistCheckpoint();
+            safely(persistPreferences());
+            safely(persistCheckpoint());
         };
     }, []);
 }

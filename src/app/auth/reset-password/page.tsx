@@ -40,18 +40,19 @@ export default function ResetPasswordPage() {
                 return;
             }
 
-            const { error: updateError } = await supabase.auth.updateUser({ password });
-            if (updateError) {
-                setError(updateError.message || 'Failed to update password.');
+            const { data: updated, error: updateError } = await supabase.auth.updateUser({ password });
+            if (updateError || updated.user?.id !== user.id) {
+                setError(updateError?.message || 'Password update was not acknowledged.');
                 return;
             }
 
-            const { error: profileError } = await supabase
+            const { data: savedProfile, error: profileError } = await supabase
                 .from('profile_private')
-                .update({ has_password: true, updated_at: new Date().toISOString() })
-                .eq('user_id', user.id);
-            if (profileError) {
-                console.warn('[Auth] Password changed, but profile metadata could not be refreshed:', profileError.message);
+                .upsert({ user_id: user.id, has_password: true })
+                .select('user_id').single();
+            if (profileError || !savedProfile) {
+                setError('Password changed, but account metadata could not be saved. Sign in with the new password and retry profile setup.');
+                return;
             }
             setSuccess(true);
         } catch {

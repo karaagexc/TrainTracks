@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useShallow } from 'zustand/react/shallow';
 import { cn } from "@/lib/utils";
 import { LINES } from "@/data/stations";
 import { getLineColor, getStationBadge, getThemeColors, getDoorSide } from "@/utils/stationUtils";
@@ -11,13 +12,19 @@ import { StationInfoModal } from "@/components/StationInfoModal";
 import { directionShortLabel, getNetworkStations, getOperationalMode, isForwardDirection } from "@/domain/railway";
 
 export function LineExplorer() {
-    const { origin, direction: tripDirection, currentStation, line7Mode } = useTripStore();
+    const { origin, direction: tripDirection, currentStation, line7Mode } = useTripStore(useShallow((state) => ({
+        origin: state.origin, direction: state.direction, currentStation: state.currentStation, line7Mode: state.line7Mode,
+    })));
     const isDevMode = useTripStore(s => s.isDevMode);
     const [activeLine, setActiveLine] = useState<'LRT1' | 'LRT2' | 'MRT3' | 'MRT7'>('LRT1');
     const [viewDirection, setViewDirection] = useState<Direction>('NORTHBOUND');
     const [selectedStation, setSelectedStation] = useState<Station | null>(null);
     const listRef = useRef<HTMLDivElement>(null);
-    const lastInteraction = useRef<number>(0);
+    const isBrowsingRef = useRef(false);
+    const interactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const scrollUnlockRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isProgrammaticScroll = useRef(false);
+    const scrollToCurrentRef = useRef<(forceLineSwitch?: boolean) => void>(() => {});
 
     // Event-driven gradient flash (triggers on line switch or station change)
     const [gradientFlash, setGradientFlash] = useState(false);
@@ -29,6 +36,7 @@ export function LineExplorer() {
 
     // Auto-Select Line based on Origin/Current
     useEffect(() => {
+        if (isBrowsingRef.current) return;
         if (currentStation) {
             setActiveLine(currentStation.lineId as any);
         } else if (origin) {
@@ -38,6 +46,7 @@ export function LineExplorer() {
 
     // Auto-Switch Direction based on Real Movement
     useEffect(() => {
+        if (isBrowsingRef.current) return;
         if (tripDirection) {
             // If the app detects we are moving South, switch POV to South
             // If moving North, switch POV to North
@@ -57,12 +66,10 @@ export function LineExplorer() {
         });
 
     // Auto-Revert Logic
-    const isBrowsingRef = useRef(false);
-    const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const isProgrammaticScroll = useRef(false); // Prevent scroll events from programmatic scrolls
-
     const scrollToCurrent = useCallback((forceLineSwitch = false) => {
         if (!currentStation) return;
+        isBrowsingRef.current = false;
+        if (forceLineSwitch && tripDirection) setViewDirection(tripDirection);
 
         // If we need to switch lines first, do that and scroll after React re-renders
         if (forceLineSwitch && currentStation.lineId !== activeLine) {
@@ -88,17 +95,25 @@ export function LineExplorer() {
                 behavior: 'smooth'
             });
             // Release the lock after the smooth scroll finishes (~500ms)
-            setTimeout(() => { isProgrammaticScroll.current = false; }, 600);
+            if (scrollUnlockRef.current) clearTimeout(scrollUnlockRef.current);
+            scrollUnlockRef.current = setTimeout(() => { isProgrammaticScroll.current = false; }, 600);
             isBrowsingRef.current = false;
         }
-    }, [activeLine, currentStation]);
+    }, [activeLine, currentStation, tripDirection]);
+    useEffect(() => { scrollToCurrentRef.current = scrollToCurrent; }, [scrollToCurrent]);
 
     const startInactivityTimer = useCallback(() => {
         if (interactionTimeoutRef.current) clearTimeout(interactionTimeoutRef.current);
+        isBrowsingRef.current = true;
         interactionTimeoutRef.current = setTimeout(() => {
-            scrollToCurrent(true); // Force revert (including line switch) after 10s
+            scrollToCurrentRef.current(true);
         }, 10000);
-    }, [scrollToCurrent]);
+    }, []);
+
+    useEffect(() => () => {
+        if (interactionTimeoutRef.current) clearTimeout(interactionTimeoutRef.current);
+        if (scrollUnlockRef.current) clearTimeout(scrollUnlockRef.current);
+    }, []);
 
     const handleScroll = () => {
         // Ignore scroll events caused by our own scrollTo calls
@@ -112,9 +127,11 @@ export function LineExplorer() {
         if (!listRef.current || !filteredStations.length) return;
 
         // Small delay to ensure layout is ready after line switch
-        const t = setTimeout(() => scrollToCurrent(false), 150);
+        const t = setTimeout(() => {
+            if (!isBrowsingRef.current) scrollToCurrent(false);
+        }, 150);
         return () => clearTimeout(t);
-    }, [currentStation?.id, activeLine, filteredStations.length, scrollToCurrent]);
+    }, [currentStation?.id, activeLine, viewDirection, filteredStations.length, scrollToCurrent]);
 
     const theme = getThemeColors(activeLine);
 
@@ -152,7 +169,8 @@ export function LineExplorer() {
                     {/* Checkbox-style Toggle for Direction */}
                     <div className="flex bg-black/40 p-1 rounded-full border border-zinc-800">
                         <button
-                            onClick={() => setViewDirection(activeLine === 'LRT2' ? 'WESTBOUND' : 'NORTHBOUND')}
+                            onClick={() => { startInactivityTimer(); setViewDirection(activeLine === 'LRT2' ? 'WESTBOUND' : 'NORTHBOUND'); }}
+                            aria-pressed={!isForwardDirection(viewDirection)}
                             className={cn(
                                 "px-3 py-1.5 rounded-full text-[10px] font-bold transition-all flex items-center gap-1",
                                 !isForwardDirection(viewDirection) ? "bg-zinc-800 text-white shadow-sm hover:scale-105" : "text-white/60 hover:text-white"
@@ -162,7 +180,8 @@ export function LineExplorer() {
                             {activeLine === 'LRT2' ? <ArrowLeft className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />}
                         </button>
                         <button
-                            onClick={() => setViewDirection(activeLine === 'LRT2' ? 'EASTBOUND' : 'SOUTHBOUND')}
+                            onClick={() => { startInactivityTimer(); setViewDirection(activeLine === 'LRT2' ? 'EASTBOUND' : 'SOUTHBOUND'); }}
+                            aria-pressed={isForwardDirection(viewDirection)}
                             className={cn(
                                 "px-3 py-1.5 rounded-full text-[10px] font-bold transition-all flex items-center gap-1",
                                 isForwardDirection(viewDirection) ? "bg-zinc-800 text-white shadow-sm hover:scale-105" : "text-white/60 hover:text-white"
@@ -181,7 +200,8 @@ export function LineExplorer() {
                         .map(lineId => (
                         <button
                             key={lineId}
-                            onClick={() => setActiveLine(lineId)}
+                            onClick={() => { startInactivityTimer(); setActiveLine(lineId); }}
+                            aria-pressed={activeLine === lineId}
                             className={cn(
                                 "flex-1 py-2 rounded-lg text-xs font-bold transition-all",
                                 activeLine === lineId
@@ -201,6 +221,9 @@ export function LineExplorer() {
             {/* Timeline Visualization */}
             <div
                 ref={listRef}
+                onScroll={handleScroll}
+                onWheel={startInactivityTimer}
+                onPointerDown={startInactivityTimer}
                 onClick={() => { isBrowsingRef.current = true; startInactivityTimer(); }}
                 onTouchStart={() => { isBrowsingRef.current = true; startInactivityTimer(); }}
                 className="overflow-x-auto pb-6 no-scrollbar -mx-6 px-6" // Reduced padding
@@ -276,6 +299,17 @@ export function LineExplorer() {
                             <div
                                 key={station.id}
                                 data-station-id={station.id}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Station information: ${station.name}`}
+                                onFocus={startInactivityTimer}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        startInactivityTimer();
+                                        setSelectedStation(station);
+                                    }
+                                }}
                                 className="flex flex-col items-center justify-center relative group cursor-pointer h-14 w-10 flex-shrink-0" // Reduced h-14 for centering
                                 onClick={() => {
                                     setSelectedStation(station);

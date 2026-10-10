@@ -13,6 +13,13 @@
     "test:station-images": "node scripts/station-images-smoke.mjs",
     "test:bus": "node scripts/bus-mode-smoke.mjs",
     "test:engines": "node scripts/logic-rebuild-smoke.mjs",
+    "test:offline": "node scripts/offline-smoke.mjs",
+    "test:reliability": "node scripts/journey-reliability-smoke.mjs",
+    "test:persistence": "node scripts/persistence-repair-smoke.mjs",
+    "test:notifications": "node scripts/notification-repair-smoke.mjs",
+    "test:map-icons": "node scripts/map-icon-repair-smoke.mjs",
+    "test:db": "node scripts/db-permissions-smoke.mjs",
+    "test:train": "npm run test:journey && npm run test:reliability && npm run test:trains && npm run test:incidents && npm run test:predictions && npm run test:station-images && npm run test:engines && npm run test:offline && npm run test:persistence && npm run test:notifications && npm run test:map-icons",
     "test:logic": "npm run test:journey && npm run test:trains && npm run test:incidents && npm run test:predictions && npm run test:station-images && npm run test:bus && npm run test:engines",
     "lint": "eslint ."
   },
@@ -27,13 +34,18 @@
     "framer-motion": "^12.33.0",
     "leaflet": "^1.9.4",
     "lucide-react": "1.23.0",
-    "next": "16.2.11",
+    "next": "16.4.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-leaflet": "5.0.0",
     "tailwind-merge": "^2.2.0",
     "tailwindcss-animate": "^1.0.7",
     "zustand": "^4.5.0"
+  },
+  "overrides": {
+    "@rollup/plugin-terser": {
+      "serialize-javascript": "7.0.5"
+    }
   },
   "devDependencies": {
     "@types/leaflet": "1.9.21",
@@ -42,9 +54,10 @@
     "@types/react-dom": "19",
     "autoprefixer": "^10.4.17",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.2.11",
-    "postcss": "8.4.35",
-    "tailwindcss": "3.4.1",
+    "eslint-config-next": "16.4.0",
+    "fake-indexeddb": "6.2.5",
+    "postcss": "8.5.29",
+    "tailwindcss": "3.4.19",
     "typescript": "^5"
   }
 }

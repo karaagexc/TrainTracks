@@ -12,6 +12,8 @@ import { ApiDocs } from "@/components/ApiDocs";
 import { ApiConfirmModal } from "@/components/ApiConfirmModal";
 import { PREDICTION_MAP_LIMIT } from "@/domain/predictions/clientRequests";
 import type { RailLineId } from "@/types";
+import { parseAppConfig, API_CONFIG_DEFAULTS, type AppConfig } from '@/domain/config';
+import { configToConsoleValues, configFromConsoleValues } from '@/domain/config/console';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -519,28 +521,68 @@ export function ApiConsole({ userEmail }: { userEmail: string | null }) {
     }, [cliLog]);
 
     // â”€â”€â”€ Config State (Discord-style staged changes) â”€â”€â”€â”€â”€â”€â”€â”€
-    const [apiEnabled, setApiEnabled] = useState(() => {
-        if (typeof window === 'undefined') return true;
-        const stored = localStorage.getItem('traintracks_api_enabled');
-        return stored !== null ? stored === 'true' : true;
-    });
-    const [configValues, setConfigValues] = useState({
-        defaultLimit: '3',
-        validWindowS: '25',
-        stationLookaheadMin: '45',
-        corsOrigin: '*',
-        crowdIntervalMs: '3000',
-        crowdMinSpeedKph: '5',
-        crowdRequiredSamples: '2',
-        stallSampleIntervalMs: '30000',
-        stallThresholdKm: '0.1',
-        stallWindowSamples: '14',
-        stallActivationDistKm: '0.2',
-        stallDeviceCooldownMs: '300000',
-        stallMaxStationDistKm: '1.5',
-        stallMaxReportsPerHour: '6',
-        stallMinDurationMin: '3',
-    });
+    const [apiEnabled, setApiEnabled] = useState(false);
+    const [configValues, setConfigValues] = useState(() => configToConsoleValues());
+    const [configStatus, setConfigStatus] = useState<'loading' | 'ready' | 'degraded' | 'error'>('loading');
+    const [configError, setConfigError] = useState<string | null>(null);
+    const [configBusy, setConfigBusy] = useState(false);
+    const configRef = useRef<AppConfig | null>(null);
+    const configBusyRef = useRef(false);
+
+    const acknowledgeConfig = useCallback((config: AppConfig) => {
+        configRef.current = config;
+        setApiEnabled(config.public_api_enabled);
+        setConfigValues(configToConsoleValues(config.api_config));
+        setConfigStatus('ready');
+        setConfigError(null);
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            try {
+                const response = await fetch('/api/admin/config', { cache: 'no-store' });
+                const body = await response.json();
+                if (cancelled) return;
+                const parsed = parseAppConfig(body.config);
+                if (!response.ok || body.ok !== true || parsed.status !== 'ready' || !parsed.config) {
+                    setConfigStatus(body.status === 'degraded' ? 'degraded' : 'error');
+                    setConfigError(body.error ?? parsed.error ?? 'Configuration unavailable.');
+                    return;
+                }
+                acknowledgeConfig(parsed.config);
+            } catch (error) {
+                if (!cancelled) {
+                    setConfigStatus('error');
+                    setConfigError(error instanceof Error ? error.message : 'Configuration unavailable.');
+                }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [acknowledgeConfig]);
+
+    const saveServerConfig = async (payload: Record<string, unknown>): Promise<boolean> => {
+        if (configBusyRef.current || configStatus !== 'ready') return false;
+        configBusyRef.current = true;
+        setConfigBusy(true);
+        setConfigError(null);
+        try {
+            const response = await fetch('/api/admin/config', {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload), cache: 'no-store',
+            });
+            const body = await response.json();
+            const parsed = parseAppConfig(body.config);
+            if (!response.ok || body.ok !== true || parsed.status !== 'ready' || !parsed.config) {
+                throw new Error(body.error ?? parsed.error ?? 'Configuration write was not acknowledged.');
+            }
+            acknowledgeConfig(parsed.config);
+            return true;
+        } catch (error) {
+            setConfigError(error instanceof Error ? error.message : 'Configuration update failed.');
+            return false;
+        } finally { configBusyRef.current = false; setConfigBusy(false); }
+    };
     // Staged (unsaved) changes — key → newValue
     const [stagedChanges, setStagedChanges] = useState<Record<string, string>>({});
     const [showApiToggleModal, setShowApiToggleModal] = useState(false);
@@ -574,27 +616,27 @@ export function ApiConsole({ userEmail }: { userEmail: string | null }) {
         },
         corsOrigin: {
             label: 'CORS Origin',
-            description: 'The Access-Control-Allow-Origin header value for the public API. Use * for open access or a specific domain.',
-            impact: 'Restricting this will block browser requests from unauthorized domains. Setting to * allows any website to call the API.',
+            description: 'Use * for Unrestricted prediction reads only, or one exact HTTP(S) origin.',
+            impact: 'Wildcard applies only to public prediction reads with an unrestricted token. Restricted tokens and public write APIs still require explicitly allowed origins. Wildcard responses do not allow credentials.',
             inputType: 'text' as const,
         },
         crowdIntervalMs: {
             label: 'Broadcast Interval',
             description: 'Minimum milliseconds between crowdsource presence broadcasts from a single device.',
             impact: 'Lower values increase real-time accuracy but raise Supabase Realtime bandwidth. Higher values reduce server load.',
-            min: 1000, max: 30000, suffix: 'ms',
+            min: 3000, max: 30000, suffix: 'ms',
         },
         crowdMinSpeedKph: {
             label: 'Min Broadcast Speed',
             description: 'Minimum speed (km/h) a device must be traveling to be eligible to broadcast a presence signal.',
             impact: 'Prevents stationary phones near stations from flooding the crowd signal. Setting too high may filter valid slow-moving trains.',
-            min: 0, max: 50, suffix: 'km/h',
+            min: 5, max: 50, suffix: 'km/h',
         },
         crowdRequiredSamples: {
             label: 'Required Samples',
             description: 'Number of consecutive GPS readings a device needs before its presence is accepted by the server.',
             impact: 'More samples = higher quality signals but slower initial detection. Fewer samples = faster but noisier.',
-            min: 1, max: 10, suffix: 'samples',
+            min: 2, max: 10, suffix: 'samples',
         },
         stallSampleIntervalMs: {
             label: 'GPS Sample Interval',
@@ -624,40 +666,35 @@ export function ApiConsole({ userEmail }: { userEmail: string | null }) {
             label: 'Report Cooldown',
             description: 'Minimum time between stall reports from the same device. Prevents spam.',
             impact: 'Shorter cooldown allows faster re-reporting but increases abuse potential. Longer cooldown reduces noise.',
-            min: 60000, max: 900000, suffix: 'ms',
+            min: 300000, max: 900000, suffix: 'ms',
         },
         stallMaxStationDistKm: {
             label: 'Max Station Distance',
             description: 'Maximum distance from the nearest station to accept a stall report. Filters out fake reports from outside rail corridors.',
             impact: 'Too small may reject valid reports between stations. Too large weakens geo-fencing protection.',
-            min: 0.5, max: 5.0, suffix: 'km',
+            min: 0.5, max: 1.5, suffix: 'km',
         },
         stallMaxReportsPerHour: {
             label: 'Hourly Report Cap',
             description: 'Maximum stall reports a single device can submit per hour.',
             impact: 'Lower cap = stronger anti-spam. Higher cap = more flexible for genuine repeated stalls.',
-            min: 1, max: 20, suffix: 'reports',
+            min: 1, max: 6, suffix: 'reports',
         },
         stallMinDurationMin: {
             label: 'Min Stall Duration',
             description: 'Minimum stall duration (minutes) before a report is accepted. Filters premature reports.',
             impact: 'Higher threshold ensures only real stalls are reported. Lower allows earlier crowd signal contribution.',
-            min: 1, max: 15, suffix: 'min',
+            min: 3, max: 15, suffix: 'min',
         },
     };
 
     const validateConfigValue = (key: string, value: string): string | null => {
-        const meta = CONFIG_META[key];
-        if (!meta) return null;
-        if (meta.inputType === 'text') return null; // text fields have no numeric validation
-        const num = Number(value);
-        if (!Number.isFinite(num)) return `Must be a number`;
-        if (meta.min !== undefined && num < meta.min) return `Minimum is ${meta.min}`;
-        if (meta.max !== undefined && num > meta.max) return `Maximum is ${meta.max}`;
-        return null;
+        const result = configFromConsoleValues({ [key]: value }, configRef.current?.api_config ?? structuredClone(API_CONFIG_DEFAULTS));
+        return result.ok ? null : result.error;
     };
 
     const openEditModal = (key: string) => {
+        if (configStatus !== 'ready' || configBusy) return;
         const current = stagedChanges[key] ?? configValues[key as keyof typeof configValues];
         setEditingField(key);
         setEditDraft(current);
@@ -682,25 +719,20 @@ export function ApiConsole({ userEmail }: { userEmail: string | null }) {
         setStagedChanges({});
     };
 
-    const commitAllChanges = () => {
-        setConfigValues(prev => {
-            const next = { ...prev };
-            for (const [key, val] of Object.entries(stagedChanges)) {
-                (next as Record<string, string>)[key] = val;
-                localStorage.setItem(`traintracks_cfg_${key}`, val);
-            }
-            return next;
-        });
+    const commitAllChanges = async () => {
+        if (!configRef.current) return;
+        const validated = configFromConsoleValues(stagedChanges, configRef.current.api_config);
+        if (!validated.ok) { setConfigError(validated.error); return; }
+        if (!await saveServerConfig({ apiConfig: validated.value })) return;
         setStagedChanges({});
         setShowCommitModal(false);
         setConfigSaved(`${Object.keys(stagedChanges).length} setting(s) saved`);
         setTimeout(() => setConfigSaved(null), 3000);
     };
 
-    const handleApiToggle = () => {
+    const handleApiToggle = async () => {
         const newState = !apiEnabled;
-        setApiEnabled(newState);
-        localStorage.setItem('traintracks_api_enabled', String(newState));
+        if (!await saveServerConfig({ publicApiEnabled: newState })) return;
         setShowApiToggleModal(false);
         setConfigSaved(newState ? 'API Enabled' : 'API Disabled');
         setTimeout(() => setConfigSaved(null), 2500);
@@ -1324,7 +1356,7 @@ export function ApiConsole({ userEmail }: { userEmail: string | null }) {
                         <SectionHeader icon={Settings} title="API Configuration" badge={
                             configSaved ? (
                                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 ml-auto" style={{ animation: 'apiFadeIn 200ms ease-out' }}>
-                                    âœ“ {configSaved}
+                                    {configSaved}
                                 </span>
                             ) : hasStagedChanges ? (
                                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 ml-auto animate-pulse">
@@ -1333,6 +1365,8 @@ export function ApiConsole({ userEmail }: { userEmail: string | null }) {
                             ) : null
                         } />
 
+                        {configError && <p role="alert" className="text-xs text-red-400 mb-4">{configError}</p>}
+                        {configStatus === 'loading' && <p role="status" className="text-xs text-zinc-500 mb-4">Loading configuration...</p>}
                         <div className="space-y-3 pb-20">
                             {/* API Master Toggle */}
                             <div className={`backdrop-blur-xl border rounded-2xl p-5 transition-all ${apiEnabled ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
@@ -1344,19 +1378,23 @@ export function ApiConsole({ userEmail }: { userEmail: string | null }) {
                                         <div>
                                             <div className="text-sm font-bold text-white">Public API</div>
                                             <div className={`text-[10px] font-bold uppercase tracking-wider ${apiEnabled ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                {apiEnabled ? 'ENABLED' : 'DISABLED'}
+                                                {configStatus !== 'ready' ? 'UNKNOWN' : apiEnabled ? 'ENABLED' : 'DISABLED'}
                                             </div>
                                         </div>
                                     </div>
                                     <button
                                         onClick={() => setShowApiToggleModal(true)}
+                                        disabled={configStatus !== 'ready' || configBusy}
+                                        role="switch"
+                                        aria-label="Public API enabled"
+                                        aria-checked={apiEnabled}
                                         className={`relative w-14 h-7 rounded-full transition-all ${apiEnabled ? 'bg-emerald-500' : 'bg-zinc-700'}`}
                                     >
                                         <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-lg transition-all ${apiEnabled ? 'left-[30px]' : 'left-0.5'}`} />
                                     </button>
                                 </div>
                                 <p className="text-[10px] text-zinc-500 mt-3">
-                                    {apiEnabled
+                                    {configStatus !== 'ready' ? 'Public API state is unavailable.' : apiEnabled
                                         ? 'The public prediction API is accepting requests from authenticated third-party consumers.'
                                         : 'The public prediction API is offline. All token-authenticated requests will be rejected.'}
                                 </p>
@@ -1366,6 +1404,7 @@ export function ApiConsole({ userEmail }: { userEmail: string | null }) {
                                 open={showApiToggleModal}
                                 onClose={() => setShowApiToggleModal(false)}
                                 onConfirm={handleApiToggle}
+                                loading={configBusy}
                                 title={apiEnabled ? 'Disable Public API' : 'Enable Public API'}
                                 description={apiEnabled
                                     ? 'This will immediately reject all incoming public API requests. Third-party integrations will stop receiving data.'
@@ -1575,6 +1614,7 @@ export function ApiConsole({ userEmail }: { userEmail: string | null }) {
                             open={showCommitModal}
                             onClose={() => setShowCommitModal(false)}
                             onConfirm={commitAllChanges}
+                            loading={configBusy}
                             title="Apply Configuration Changes"
                             description={`You are about to apply ${Object.keys(stagedChanges).length} change(s) to the live API configuration. These changes take effect immediately for all connected clients.`}
                             detail={Object.entries(stagedChanges).map(([key, newVal]) => {

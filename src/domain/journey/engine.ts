@@ -1,12 +1,10 @@
 import { STATIONS } from '@/data/stations';
-import { getRouteProgressMetrics } from '@/utils/routeMetrics';
 import { getDistanceKm } from '@/utils/geo';
 import { LineId, Station } from '@/types';
 import { JOURNEY_CONSTANTS } from './constants';
 import { getJourneyStationById } from './graph';
-import { getJourneyRouteStations } from './routeBuilder';
 import { JourneyInput, JourneyRoute, JourneySnapshot, JourneyStatusCode } from './types';
-import { interpolatePolyline } from '@/domain/location/polyline';
+import { interpolatePolyline, projectLocationToPolyline } from '@/domain/location/polyline';
 import { findBestJourneyRouteMatch, projectLocationToJourneyEdge } from './geometry';
 import { getDirectionForStations, isForwardDirection } from '@/domain/railway';
 
@@ -55,6 +53,14 @@ function deriveDirection(route: JourneyRoute | null, currentStationId: string | 
     return null;
 }
 
+export function getJourneyEntryDirection(route: JourneyRoute | null): JourneySnapshot['direction'] {
+    const edge = route?.edges[0];
+    if (!edge || edge.type !== 'rail') return null;
+    const from = getJourneyStationById(edge.fromStationId);
+    const to = getJourneyStationById(edge.toStationId);
+    return from && to ? getDirectionForStations(from, to) : null;
+}
+
 function deriveCompatibilityStatus(snapshot: JourneySnapshot): 'IDLE' | 'WAITING' | 'TRANSIT' | 'ARRIVED' {
     switch (snapshot.phase) {
         case 'IDLE':
@@ -79,8 +85,7 @@ function computeMetrics(snapshot: JourneySnapshot): JourneySnapshot {
         };
     }
 
-    const routeStations = getJourneyRouteStations(route);
-    if (routeStations.length < 2) {
+    if (route.edges.length === 0) {
         return {
             ...snapshot,
             totalProgress: snapshot.phase === 'ARRIVED' ? 100 : 0,
@@ -88,16 +93,20 @@ function computeMetrics(snapshot: JourneySnapshot): JourneySnapshot {
         };
     }
 
-    const metrics = getRouteProgressMetrics({
-        computedRoute: routeStations,
-        routeIndex: Math.max(0, snapshot.activeEdgeIndex),
-        legProgress: snapshot.legProgress,
-    });
+    const completedDistanceMeters = route.edges.slice(0, snapshot.activeEdgeIndex)
+        .reduce((sum, edge) => sum + edge.distanceMeters, 0)
+        + (route.edges[snapshot.activeEdgeIndex]?.distanceMeters ?? 0)
+            * (snapshot.phase === 'ARRIVED' ? 1 : snapshot.legProgress / 100);
 
     return {
         ...snapshot,
-        totalProgress: metrics?.totalProgress ?? snapshot.totalProgress,
-        distanceToDestMeters: metrics?.distanceToDest ?? snapshot.distanceToDestMeters,
+        totalProgress: route.totalDistanceMeters > 0 ? clamp(completedDistanceMeters / route.totalDistanceMeters * 100, 0, 100)
+            : snapshot.phase === 'ARRIVED' ? 100 : 0,
+        distanceToDestMeters: Math.max(0, Math.round(route.totalDistanceMeters - completedDistanceMeters)),
+        completedDistanceMeters,
+        completedAt: snapshot.phase === 'ARRIVED'
+            ? snapshot.completedAt ?? snapshot.lastTrustedFixAt ?? Date.now()
+            : null,
     };
 }
 
@@ -124,6 +133,11 @@ function createSnapshotAtCursor(
     }
 
     const base: JourneySnapshot = {
+        tripId: null,
+        startedAt: null,
+        completedAt: null,
+        routeVersion: 0,
+        completedDistanceMeters: 0,
         phase,
         statusCode: phase === 'ARRIVED' ? 'ARRIVED' : 'AT_STATION',
         route,
@@ -153,7 +167,9 @@ function createSnapshotAtCursor(
 
 function moveCursorToStation(snapshot: JourneySnapshot, stationId: string, compatibilityWait = false): JourneySnapshot {
     const route = snapshot.route;
-    const stationIndex = getRouteStationIndex(route, stationId);
+    const stationIndex = route?.stationIds[snapshot.activeEdgeIndex] === stationId
+        ? snapshot.activeEdgeIndex
+        : route?.stationIds.indexOf(stationId, snapshot.activeEdgeIndex + 1) ?? -1;
     if (!route || stationIndex === -1) return snapshot;
 
     const moved = createSnapshotAtCursor(route, stationIndex, {
@@ -213,22 +229,7 @@ function updateVisualAnchors(snapshot: JourneySnapshot, currentStation: Station 
     };
 }
 
-function getTransferPathProgress(start: Station, end: { latitude: number; longitude: number }, current: { latitude: number; longitude: number }): number {
-    const coveredKm = getDistanceKm(start, current);
-    const remainingKm = getDistanceKm(current, end);
-    const segmentKm = getDistanceKm(start, end);
-
-    if (coveredKm + remainingKm === 0 || segmentKm === 0) return 0;
-
-    const segmentSq = segmentKm * segmentKm;
-    const coveredSq = coveredKm * coveredKm;
-    const remainingSq = remainingKm * remainingKm;
-    const projectedRatio = (coveredSq + segmentSq - remainingSq) / (2 * segmentSq);
-
-    return Math.max(0, Math.min(100, projectedRatio * 100));
-}
-
-function handleTransferSample(snapshot: JourneySnapshot, location: { latitude: number; longitude: number }, gpsAccuracy: number | null): JourneySnapshot {
+function handleTransferSample(snapshot: JourneySnapshot, location: { latitude: number; longitude: number }, gpsAccuracy: number | null, timestamp: number): JourneySnapshot {
     const route = snapshot.route;
     const currentStation = snapshot.currentStationId ? getJourneyStationById(snapshot.currentStationId) : null;
     const nextStation = snapshot.nextStationId ? getJourneyStationById(snapshot.nextStationId) : null;
@@ -238,16 +239,56 @@ function handleTransferSample(snapshot: JourneySnapshot, location: { latitude: n
 
     const transferTarget = transferEdge.targetCoordinates ?? nextStation;
     const partnerDistMeters = Math.round(getDistanceKm(location, transferTarget) * 1000);
-    const rawProgress = Math.max(snapshot.legProgressHighWater, getTransferPathProgress(currentStation, transferTarget, location));
+    const projection = projectLocationToPolyline(location, [currentStation, transferTarget]);
+    const hasAccurateArrivalFix = gpsAccuracy !== null && gpsAccuracy <= JOURNEY_CONSTANTS.transferExitAccuracyMeters;
+    const corridorMeters = JOURNEY_CONSTANTS.transferCorridorBaseMeters + Math.min(30, (gpsAccuracy ?? 0) / 2);
+    if (!hasAccurateArrivalFix || !projection || projection.distanceFromPathMeters > corridorMeters) {
+        return {
+            ...snapshot,
+            phase: 'TRANSFER_WALK',
+            statusCode: 'TRANSFER_ACTIVE',
+            lastSampleAt: timestamp,
+            estimatorMode: 'UNCERTAIN',
+            estimatorConfidence: 'LOW',
+            gpsFallbackActive: true,
+            stationCandidateId: null,
+            stationCandidateSince: null,
+            stationCandidateSamples: 0,
+            uncertaintyMeters: Math.max(snapshot.uncertaintyMeters, (gpsAccuracy ?? 999) + (projection?.distanceFromPathMeters ?? 0)),
+        };
+    }
+    const projectedProgress = projection.pathLengthMeters > 0 ? projection.distanceAlongMeters / projection.pathLengthMeters * 100 : 0;
+    const rawProgress = Math.min(99, Math.max(snapshot.legProgressHighWater, projectedProgress));
     const remainingPathMeters = Math.max(0, Math.round(transferEdge.distanceMeters * (1 - Math.min(100, rawProgress) / 100)));
     const completionRadiusMeters = transferEdge.completionRadiusMeters || JOURNEY_CONSTANTS.transferExitRadiusMeters;
-    const hasAccurateArrivalFix = (gpsAccuracy ?? 999) <= JOURNEY_CONSTANTS.transferExitAccuracyMeters;
-    const isAtPartner = partnerDistMeters <= JOURNEY_CONSTANTS.transferHardExitRadiusMeters
-        || (partnerDistMeters <= completionRadiusMeters && hasAccurateArrivalFix && rawProgress >= 90);
+    const isAtPartner = hasAccurateArrivalFix && (partnerDistMeters <= JOURNEY_CONSTANTS.transferHardExitRadiusMeters
+        || (partnerDistMeters <= completionRadiusMeters && rawProgress >= 90));
+    const sameCandidate = snapshot.stationCandidateId === nextStation.id
+        && snapshot.lastSampleAt !== null && timestamp - snapshot.lastSampleAt <= JOURNEY_CONSTANTS.arrivalMaxSampleGapMs;
+    const stationCandidateSince = isAtPartner ? sameCandidate ? snapshot.stationCandidateSince ?? timestamp : timestamp : null;
+    const stationCandidateSamples = isAtPartner ? sameCandidate ? snapshot.stationCandidateSamples + 1 : 1 : 0;
+    const working = {
+        ...snapshot,
+        lastSampleAt: timestamp,
+        lastTrustedFixAt: timestamp,
+        lastEstimatorUpdateAt: timestamp,
+        projectedDistanceMeters: transferEdge.distanceMeters * rawProgress / 100,
+        projectedPathLengthMeters: transferEdge.distanceMeters,
+        estimatedLocation: location,
+        estimatedSpeedKph: 0,
+        estimatorMode: 'LIVE' as const,
+        estimatorConfidence: gpsAccuracy! <= 35 ? 'HIGH' as const : 'MEDIUM' as const,
+        gpsFallbackActive: false,
+        uncertaintyMeters: gpsAccuracy!,
+        stationCandidateId: isAtPartner ? nextStation.id : null,
+        stationCandidateSince,
+        stationCandidateSamples,
+    };
 
-    if (isAtPartner) {
+    if (stationCandidateSince !== null && timestamp - stationCandidateSince >= JOURNEY_CONSTANTS.railArrivalConfirmMs
+        && stationCandidateSamples >= JOURNEY_CONSTANTS.arrivalMinSamples) {
         return advanceCursor({
-            ...snapshot,
+            ...working,
             phase: 'TRANSFER_WAIT',
             statusCode: 'AT_STATION',
             displayStationId: nextStation.id,
@@ -263,7 +304,7 @@ function handleTransferSample(snapshot: JourneySnapshot, location: { latitude: n
     }
 
     return computeMetrics({
-        ...snapshot,
+        ...working,
         phase: 'TRANSFER_WALK',
         statusCode: 'TRANSFER_ACTIVE',
         displayStationId: currentStation.id,
@@ -295,6 +336,10 @@ function getRailCorridorMeters(lineId: LineId, accuracyMeters: number): number {
 function copyEstimatorRuntime(from: JourneySnapshot, to: JourneySnapshot): JourneySnapshot {
     return {
         ...to,
+        tripId: from.tripId,
+        startedAt: from.startedAt,
+        completedAt: to.phase === 'ARRIVED' ? from.completedAt ?? from.lastTrustedFixAt ?? Date.now() : null,
+        routeVersion: from.routeVersion,
         estimatorMode: from.estimatorMode,
         estimatorConfidence: from.estimatorConfidence,
         lastSampleAt: from.lastSampleAt,
@@ -379,11 +424,7 @@ function handleRailSample(
     const isStopped = measuredSpeedKph <= JOURNEY_CONSTANTS.arrivalMaxSpeedKph;
     const zeroSpeedSince = isStopped ? snapshot.zeroSpeedSince ?? timestamp : null;
     const rawProgress = projection.progress * 100;
-    const recoveryFloor = estimatorMode === 'RECOVERING'
-        ? Math.max(0, snapshot.legProgress - 8)
-        : snapshot.hasDepartedOrigin
-            ? snapshot.legProgressHighWater
-            : 0;
+    const recoveryFloor = snapshot.hasDepartedOrigin ? snapshot.legProgressHighWater : 0;
     let legProgress = clamp(Math.max(rawProgress, recoveryFloor), 0, 100);
     let legProgressHighWater = Math.max(snapshot.legProgressHighWater, legProgress);
     let hasDepartedOrigin = snapshot.hasDepartedOrigin;
@@ -395,41 +436,43 @@ function handleRailSample(
     );
     const arrivalRadiusMeters = stationAnchorRadiusMeters;
     const nearNext = projection.remainingMeters <= arrivalRadiusMeters + Math.min(35, accuracyMeters * 0.25);
+    const candidateId = isStopped ? nearNext ? nextStation.id : nearCurrent ? currentStation.id : null : null;
+    const sameCandidate = candidateId !== null && snapshot.stationCandidateId === candidateId
+        && (currentEdge.lineId === 'EDSA' || (snapshot.lastSampleAt !== null
+            && timestamp - snapshot.lastSampleAt <= JOURNEY_CONSTANTS.arrivalMaxSampleGapMs));
+    const isNewSample = snapshot.lastSampleAt !== timestamp;
+    const stationCandidateSince = candidateId
+        ? sameCandidate ? snapshot.stationCandidateSince ?? timestamp : timestamp
+        : null;
+    const stationCandidateSamples = candidateId
+        ? sameCandidate ? snapshot.stationCandidateSamples + (isNewSample ? 1 : 0) : 1
+        : 0;
+    const confirmMs = currentEdge.lineId === 'EDSA'
+        ? JOURNEY_CONSTANTS.busArrivalConfirmMs
+        : JOURNEY_CONSTANTS.railArrivalConfirmMs;
+    const candidateConfirmed = stationCandidateSince !== null
+        && timestamp - stationCandidateSince >= confirmMs
+        && stationCandidateSamples >= JOURNEY_CONSTANTS.arrivalMinSamples;
     const isDwellingAtCurrent = nearCurrent && isStopped && (
         source === 'simulation'
         || !hasDepartedOrigin
         || snapshot.phase === 'ONBOARD_DWELL'
         || snapshot.phase === 'TRANSFER_WAIT'
         || snapshot.estimatorMode === 'STATION_DWELL'
+        || (candidateId === currentStation.id && candidateConfirmed)
     );
 
     if (isDwellingAtCurrent) {
         legProgress = 0;
         legProgressHighWater = 0;
         hasDwelt = true;
+        if (currentStation.id === route.originId && snapshot.activeEdgeIndex === 0) hasDepartedOrigin = false;
     }
     if (projection.distanceAlongMeters >= JOURNEY_CONSTANTS.departureDistanceMeters && measuredSpeedKph >= 6) {
         hasDepartedOrigin = true;
     }
 
-    const sameCandidate = snapshot.stationCandidateId === nextStation.id;
-    const isNewSample = snapshot.lastSampleAt !== timestamp;
-    const stationCandidateSince = nearNext && isStopped
-        ? sameCandidate ? snapshot.stationCandidateSince ?? timestamp : timestamp
-        : null;
-    const stationCandidateSamples = nearNext && isStopped
-        ? sameCandidate
-            ? snapshot.stationCandidateSamples + (isNewSample ? 1 : 0)
-            : 1
-        : 0;
-    const confirmMs = currentEdge.lineId === 'EDSA'
-        ? JOURNEY_CONSTANTS.busArrivalConfirmMs
-        : JOURNEY_CONSTANTS.railArrivalConfirmMs;
-    const stationArrivalConfirmed = Boolean(
-        stationCandidateSince !== null
-        && timestamp - stationCandidateSince >= confirmMs
-        && stationCandidateSamples >= JOURNEY_CONSTANTS.arrivalMinSamples,
-    );
+    const stationArrivalConfirmed = candidateId === nextStation.id && candidateConfirmed;
 
     let statusCode: JourneyStatusCode;
     let displayStationId: string;
@@ -439,14 +482,17 @@ function handleRailSample(
     if (isDwellingAtCurrent) {
         statusCode = 'AT_STATION';
         displayStationId = currentStation.id;
-        phase = currentStation.id === route.originId ? 'WAITING_AT_ORIGIN' : 'ONBOARD_DWELL';
+        phase = currentStation.id === route.originId && snapshot.activeEdgeIndex === 0
+            ? 'WAITING_AT_ORIGIN' : 'ONBOARD_DWELL';
         statusLock = 0;
-    } else if (projection.distanceAlongMeters < Math.max(160, projection.pathLengthMeters * 0.18)) {
+    } else if (projection.distanceAlongMeters < Math.max(160, projection.pathLengthMeters * 0.18)
+        && (currentEdge.lineId === 'EDSA' || snapshot.statusLock < 2)) {
         statusCode = 'LEAVING_STATION';
         displayStationId = currentStation.id;
         phase = 'ONBOARD_MOVING';
         statusLock = 1;
-    } else if (projection.remainingMeters <= Math.max(450, projection.pathLengthMeters * 0.28)) {
+    } else if (projection.remainingMeters <= Math.max(450, projection.pathLengthMeters * 0.28)
+        || (currentEdge.lineId !== 'EDSA' && snapshot.statusLock === 3)) {
         statusCode = 'APPROACHING_STATION';
         displayStationId = nextStation.id;
         phase = 'ONBOARD_MOVING';
@@ -481,12 +527,19 @@ function handleRailSample(
         projectedPathLengthMeters: projection.pathLengthMeters,
         estimatedSpeedKph: measuredSpeedKph,
         uncertaintyMeters: Math.round(accuracyMeters + projection.distanceFromPathMeters),
-        stationCandidateId: nearNext && isStopped ? nextStation.id : null,
+        stationCandidateId: candidateId,
         stationCandidateSince,
         stationCandidateSamples,
         zeroSpeedSince,
         recoveryStartedAt: estimatorMode === 'RECOVERING' ? recoveryStartedAt : null,
-        estimatedLocation: projection.location,
+        estimatedLocation: estimatorMode === 'RECOVERING' && snapshot.estimatedLocation && recoveryStartedAt
+            ? {
+                latitude: snapshot.estimatedLocation.latitude + (projection.location.latitude - snapshot.estimatedLocation.latitude)
+                    * clamp((timestamp - (snapshot.lastEstimatorUpdateAt ?? recoveryStartedAt)) / Math.max(1, JOURNEY_CONSTANTS.recoveryDurationMs - (timestamp - recoveryStartedAt)), 0, 1),
+                longitude: snapshot.estimatedLocation.longitude + (projection.location.longitude - snapshot.estimatedLocation.longitude)
+                    * clamp((timestamp - (snapshot.lastEstimatorUpdateAt ?? recoveryStartedAt)) / Math.max(1, JOURNEY_CONSTANTS.recoveryDurationMs - (timestamp - recoveryStartedAt)), 0, 1),
+            }
+            : projection.location,
     }, currentStation, nextStation, statusCode);
 
     if (stationArrivalConfirmed) {
@@ -605,7 +658,10 @@ function handleEstimatorTick(snapshot: JourneySnapshot, timestamp: number): Jour
         ? interpolatePolyline(projectionPath, projectedDistanceMeters)
         : snapshot.estimatedLocation;
     const legProgress = clamp(projectedDistanceMeters / snapshot.projectedPathLengthMeters * 100, 0, 100);
-    const estimatorMode: JourneySnapshot['estimatorMode'] = reachedStation
+    const stationaryAtConfirmedStation = (snapshot.phase === 'WAITING_AT_ORIGIN'
+        || snapshot.phase === 'ONBOARD_DWELL' || snapshot.phase === 'TRANSFER_WAIT')
+        && snapshot.statusCode === 'AT_STATION' && snapshot.estimatedSpeedKph < 6;
+    const estimatorMode: JourneySnapshot['estimatorMode'] = reachedStation || stationaryAtConfirmedStation
         ? 'STATION_DWELL'
         : ageMs < JOURNEY_CONSTANTS.deadReckoningAfterMs
             ? 'COASTING'
@@ -615,17 +671,17 @@ function handleEstimatorTick(snapshot: JourneySnapshot, timestamp: number): Jour
 
     return computeMetrics({
         ...snapshot,
-        phase: snapshot.phase === 'WAITING_AT_ORIGIN' ? snapshot.phase : 'ONBOARD_MOVING',
-        statusCode: nextRemainingMeters <= 450 ? 'APPROACHING_STATION' : snapshot.statusCode,
-        displayStationId: nextRemainingMeters <= 450 ? snapshot.nextStationId : snapshot.displayStationId,
+        phase: stationaryAtConfirmedStation ? snapshot.phase : 'ONBOARD_MOVING',
+        statusCode: !stationaryAtConfirmedStation && nextRemainingMeters <= 450 ? 'APPROACHING_STATION' : snapshot.statusCode,
+        displayStationId: !stationaryAtConfirmedStation && nextRemainingMeters <= 450 ? snapshot.nextStationId : snapshot.displayStationId,
         legProgress: Math.max(snapshot.legProgress, legProgress),
-        legProgressHighWater: Math.max(snapshot.legProgressHighWater, legProgress),
+        legProgressHighWater: snapshot.legProgressHighWater,
         distanceToNextMeters: Math.round(nextRemainingMeters),
         estimatorMode,
         estimatorConfidence: estimatorMode === 'COASTING' ? 'MEDIUM' : 'LOW',
         lastEstimatorUpdateAt: timestamp,
         projectedDistanceMeters,
-        estimatedSpeedKph: reachedStation ? 0 : estimatedSpeedKph,
+        estimatedSpeedKph: reachedStation || !canProject ? 0 : estimatedSpeedKph,
         uncertaintyMeters: Math.round(uncertaintyMeters),
         gpsFallbackActive: true,
         estimatedLocation,
@@ -642,6 +698,12 @@ export function alignJourneySnapshotToLocation(
 ): JourneySnapshot {
     const route = snapshot.route;
     if (!route || route.edges.length === 0) return snapshot;
+    if (snapshot.phase === 'ARRIVED' || !Number.isFinite(timestamp) || timestamp <= 0
+        || (snapshot.lastSampleAt !== null && timestamp <= snapshot.lastSampleAt)
+        || !Number.isFinite(location.latitude) || Math.abs(location.latitude) > 90
+        || !Number.isFinite(location.longitude) || Math.abs(location.longitude) > 180
+        || (speedKph !== null && (!Number.isFinite(speedKph) || speedKph < 0))
+        || (gpsAccuracy !== null && (!Number.isFinite(gpsAccuracy) || gpsAccuracy < 0))) return snapshot;
     const match = findBestJourneyRouteMatch(route, location);
     const accuracyMeters = gpsAccuracy ?? 999;
     if (!match.best || match.ambiguous || accuracyMeters > JOURNEY_CONSTANTS.maxJourneyGpsAccuracyMeters) {
@@ -683,6 +745,11 @@ export function alignJourneySnapshotToLocation(
 
 export function createIdleJourneySnapshot(): JourneySnapshot {
     return {
+        tripId: null,
+        startedAt: null,
+        completedAt: null,
+        routeVersion: 0,
+        completedDistanceMeters: 0,
         phase: 'IDLE',
         statusCode: 'WAITING_FOR_GPS',
         route: null,
@@ -708,21 +775,56 @@ export function createIdleJourneySnapshot(): JourneySnapshot {
     };
 }
 
-export function createJourneySnapshot(route: JourneyRoute | null): JourneySnapshot {
+export function createJourneyPreviewSnapshot(route: JourneyRoute | null): JourneySnapshot {
+    return createSnapshotAtCursor(route, 0);
+}
+
+export function createJourneySnapshot(route: JourneyRoute | null, identity?: { tripId?: string; startedAt?: number }): JourneySnapshot {
     if (!route || route.stationIds.length === 0) {
         return createIdleJourneySnapshot();
     }
 
-    return createSnapshotAtCursor(route, 0, {
+    const snapshot = createSnapshotAtCursor(route, 0, {
         hasDepartedOrigin: false,
         gpsFallbackActive: false,
+    });
+    const startedAt = identity?.startedAt ?? Date.now();
+    return {
+        ...snapshot,
+        tripId: identity?.tripId ?? globalThis.crypto?.randomUUID?.() ?? `trip-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        startedAt,
+        completedAt: snapshot.phase === 'ARRIVED' ? startedAt : null,
+        routeVersion: 1,
+    };
+}
+
+export function amendJourneySnapshot(snapshot: JourneySnapshot, route: JourneyRoute): JourneySnapshot {
+    const currentIndex = Math.min(snapshot.activeEdgeIndex, Math.max(0, route.stationIds.length - 1));
+    const nextStationId = route.stationIds[currentIndex + 1] ?? null;
+    const amended = {
+        ...snapshot,
+        route,
+        routeVersion: snapshot.routeVersion + 1,
+        nextStationId,
+        direction: deriveDirection(route, snapshot.currentStationId, nextStationId),
+        visualTargetStationId: nextStationId,
+        stationCandidateId: null,
+        stationCandidateSince: null,
+        stationCandidateSamples: 0,
+    };
+    return computeMetrics(nextStationId ? amended : {
+        ...amended,
+        phase: 'ARRIVED',
+        statusCode: 'ARRIVED',
+        legProgress: 100,
+        totalProgress: 100,
     });
 }
 
 export function reduceJourneySnapshot(snapshot: JourneySnapshot, input: JourneyInput): JourneySnapshot {
     switch (input.type) {
         case 'START_TRIP':
-            return createJourneySnapshot(input.route);
+            return createJourneySnapshot(input.route, { tripId: input.tripId, startedAt: input.timestamp });
         case 'END_TRIP':
             return createIdleJourneySnapshot();
         case 'SET_FALLBACK_ACTIVE':
@@ -744,7 +846,23 @@ export function reduceJourneySnapshot(snapshot: JourneySnapshot, input: JourneyI
             return createJourneySnapshot(input.route);
         case 'SNAP_TO_STATION':
             return moveCursorToStation(snapshot, input.stationId, snapshot.phase === 'TRANSFER_WAIT');
-        case 'LOCATION_SAMPLE':
+        case 'CONFIRM_TRANSFER': {
+            const edge = snapshot.route?.edges[snapshot.activeEdgeIndex];
+            if (snapshot.phase !== 'TRANSFER_WALK' || edge?.type !== 'transfer' || edge.id !== input.edgeId
+                || !Number.isFinite(input.timestamp) || input.timestamp <= 0
+                || input.timestamp < (snapshot.lastSampleAt ?? snapshot.startedAt ?? 0)) return snapshot;
+            const confirmed = advanceCursor({ ...snapshot, lastEstimatorUpdateAt: input.timestamp }, true);
+            return confirmed.phase === 'ARRIVED' ? { ...confirmed, completedAt: input.timestamp } : confirmed;
+        }
+        case 'LOCATION_SAMPLE': {
+            const sampleAt = input.timestamp ?? Date.now();
+            if (input.source === 'fallback' || snapshot.phase === 'ARRIVED') return snapshot;
+            if (input.location && (!Number.isFinite(input.location.latitude) || !Number.isFinite(input.location.longitude)
+                || Math.abs(input.location.latitude) > 90 || Math.abs(input.location.longitude) > 180)) return snapshot;
+            if (input.speedKph !== null && (!Number.isFinite(input.speedKph) || input.speedKph < 0)) return snapshot;
+            if (input.gpsAccuracy !== null && (!Number.isFinite(input.gpsAccuracy) || input.gpsAccuracy < 0)) return snapshot;
+            if (!Number.isFinite(sampleAt) || sampleAt <= 0
+                || (snapshot.lastSampleAt !== null && sampleAt <= snapshot.lastSampleAt)) return snapshot;
             if (!snapshot.route || !snapshot.currentStationId) {
                 return {
                     ...snapshot,
@@ -772,7 +890,7 @@ export function reduceJourneySnapshot(snapshot: JourneySnapshot, input: JourneyI
             }
 
             if (snapshot.route.edges[snapshot.activeEdgeIndex].type === 'transfer') {
-                return handleTransferSample(snapshot, input.location, input.gpsAccuracy);
+                return handleTransferSample(snapshot, input.location, input.gpsAccuracy, sampleAt);
             }
 
             return handleRailSample(
@@ -780,10 +898,12 @@ export function reduceJourneySnapshot(snapshot: JourneySnapshot, input: JourneyI
                 input.location,
                 input.speedKph,
                 input.gpsAccuracy,
-                input.timestamp ?? Date.now(),
+                sampleAt,
                 input.source ?? 'gps',
             );
+        }
         case 'TICK':
+            if (!Number.isFinite(input.timestamp) || (snapshot.lastEstimatorUpdateAt !== null && input.timestamp <= snapshot.lastEstimatorUpdateAt)) return snapshot;
             return handleEstimatorTick(snapshot, input.timestamp);
         default:
             return snapshot;
@@ -826,8 +946,9 @@ export function getJourneyStopsView(snapshot: JourneySnapshot) {
         };
     }
 
-    const currentIndex = getRouteStationIndex(snapshot.route, snapshot.displayStationId ?? snapshot.currentStationId);
-    const destinationIndex = getRouteStationIndex(snapshot.route, snapshot.route.destinationId);
+    const currentIndex = snapshot.phase === 'ARRIVED' ? snapshot.route.stationIds.length - 1
+        : snapshot.activeEdgeIndex + (snapshot.displayStationId === snapshot.nextStationId ? 1 : 0);
+    const destinationIndex = snapshot.route.stationIds.length - 1;
     if (currentIndex === -1 || destinationIndex === -1) {
         return {
             stopsRemaining: null,

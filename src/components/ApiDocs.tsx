@@ -106,6 +106,8 @@ const NAV_SECTIONS = [
     { id: 'stall-report', label: 'POST /stall-report' },
     { id: 'incidents', label: 'GET /incidents' },
     { id: 'incidents-resolve', label: 'POST /incidents/resolve' },
+    { id: 'admin-config', label: 'Admin Configuration' },
+    { id: 'trip-history', label: 'Trip History' },
     { id: 'response-format', label: 'Response Format' },
     { id: 'service-states', label: 'Service States' },
     { id: 'confidence-model', label: 'Confidence Model' },
@@ -129,7 +131,7 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
 
     return (
         <div className={`${embedded ? '' : 'h-screen bg-black overflow-y-auto docs-scroll-container'} text-white font-sans`}>
-            {/* Header â€” only show if not embedded */}
+            {/* Header : only show if not embedded */}
             {!embedded && (
                 <header className="sticky top-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/5">
                     <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -140,7 +142,7 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                             <BookOpen className="w-5 h-5 text-zinc-400" />
                             <div>
                                 <h1 className="text-sm font-black tracking-tight">TrainTracks API Docs</h1>
-                                <span className="text-[9px] font-mono text-zinc-600">v1 Â· prediction-v1-dispatch-ledger-2026-05</span>
+                                <span className="text-[9px] font-mono text-zinc-600">v1 | prediction-v1-dispatch-ledger-2026-05</span>
                             </div>
                         </div>
                         <Link
@@ -180,7 +182,7 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                     <DocSection id="overview" title="Overview">
                         <p className="text-sm text-zinc-400 leading-relaxed">
                             The TrainTracks Prediction API provides schedule-derived train position forecasts and arrival estimates
-                            for Manila&apos;s urban rail network â€” <strong className="text-white">LRT-1</strong>, <strong className="text-white">LRT-2</strong>, and <strong className="text-white">MRT-3</strong>.
+                            for Manila&apos;s urban rail network : <strong className="text-white">LRT-1</strong>, <strong className="text-white">LRT-2</strong>, and <strong className="text-white">MRT-3</strong>.
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
                             <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-4">
@@ -209,19 +211,19 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                     {/* â•â•â•â•â•â•â•â•â•â• AUTHENTICATION â•â•â•â•â•â•â•â•â•â• */}
                     <DocSection id="authentication" title="Authentication">
                         <p className="text-sm text-zinc-400 leading-relaxed">
-                            The <strong className="text-white">internal API</strong> (<code className="text-xs text-zinc-300 font-mono">/api/predictions</code>) requires no authentication â€” it&apos;s used by the TrainTracks app itself.
+                            The <strong className="text-white">internal API</strong> (<code className="text-xs text-zinc-300 font-mono">/api/predictions</code>) requires no authentication : it&apos;s used by the TrainTracks app itself.
                         </p>
                         <p className="text-sm text-zinc-400 leading-relaxed">
                             The <strong className="text-white">public API</strong> (<code className="text-xs text-zinc-300 font-mono">/api/public/predictions</code>) requires authentication via one of these methods:
                         </p>
                         <div className="space-y-2 mt-3">
                             <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-4">
-                                <div className="text-[10px] text-zinc-500 font-bold uppercase mb-2">Option 1 â€” Bearer Token (recommended)</div>
+                                <div className="text-[10px] text-zinc-500 font-bold uppercase mb-2">Option 1 : Bearer Token (recommended)</div>
                                 <CopyBlock text={`curl -H "Authorization: Bearer YOUR_API_TOKEN" \\
   https://traintracks.vercel.app/api/public/predictions?lineId=MRT3&scope=map`} />
                             </div>
                             <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-4">
-                                <div className="text-[10px] text-zinc-500 font-bold uppercase mb-2">Option 2 â€” X-API-Key Header</div>
+                                <div className="text-[10px] text-zinc-500 font-bold uppercase mb-2">Option 2 : X-API-Key Header</div>
                                 <CopyBlock text={`curl -H "X-API-Key: YOUR_API_TOKEN" \\
   https://traintracks.vercel.app/api/public/predictions?lineId=LRT1&scope=station`} />
                             </div>
@@ -309,15 +311,15 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
 
                         <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-4 mb-4">
                             <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-3">Request Body (JSON)</div>
-                            <Param name="deviceId" type="string" required description="Anonymous device identifier (8â€“128 chars). SHA-256 hashed server-side." />
+                            <Param name="deviceId" type="string" required description="Anonymous device identifier (8-128 chars). SHA-256 hashed server-side." />
                             <Param name="lineId" type="string" required description="Rail line: LRT1, LRT2, or MRT3." />
                             <Param name="direction" type="string" required description="Travel direction. Must match line axis (NB/SB for LRT1/MRT3, EB/WB for LRT2)." />
-                            <Param name="lat" type="number" required description="Latitude (WGS84). Must be within Metro Manila bounds (14.30â€“14.90Â°N)." />
-                            <Param name="lng" type="number" required description="Longitude (WGS84). Must be within Metro Manila bounds (120.80â€“121.30Â°E)." />
+                            <Param name="lat" type="number" required description="Latitude (WGS84). Must be within Metro Manila bounds (14.30-14.90 degrees N)." />
+                            <Param name="lng" type="number" required description="Longitude (WGS84). Must be within Metro Manila bounds (120.80-121.30 degrees E)." />
                             <Param name="statusCode" type="string" required description="Train status: AT_STATION, LEAVING_STATION, IN_TRANSIT, or APPROACHING_STATION." />
                             <Param name="stationId" type="string" description="Nearest station ID (e.g. M3-04). Validated against the station database." />
-                            <Param name="speedKph" type="number" defaultValue="0" description="Current speed in km/h. Clamped to 0â€“120." />
-                            <Param name="confidence" type="number" defaultValue="0.5" description="Signal confidence (0.35â€“0.98). Clamped server-side." />
+                            <Param name="speedKph" type="number" defaultValue="0" description="Current speed in km/h. Clamped to 0-120." />
+                            <Param name="confidence" type="number" defaultValue="0.5" description="Signal confidence (0.35-0.98). Clamped server-side." />
                         </div>
 
                         <CopyBlock language="bash" text={`curl -X POST https://traintracks.vercel.app/api/crowd/presence \\
@@ -354,15 +356,15 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
 
                         <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-4 mt-4">
                             <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-3">Response Fields</div>
-                            <ResponseField name="congestion.score" type="number" description="Raw congestion score (0â€“7 scale)" />
+                            <ResponseField name="congestion.score" type="number" description="Raw congestion score (0-7 scale)" />
                             <ResponseField name="congestion.tier" type="string" description="LOW | MODERATE | HIGH | EXTREME" />
                             <ResponseField name="congestion.label" type="string" description="Human-readable tier label (Light, Moderate, Heavy, Extreme)" />
-                            <ResponseField name="congestion.reason" type="string?" description="Why this station is busy (e.g. 'LRT-2 interconnect â€” Gateway Mall')" />
+                            <ResponseField name="congestion.reason" type="string?" description="Why this station is busy (e.g. 'LRT-2 interconnect : Gateway Mall')" />
                             <ResponseField name="congestion.tip" type="string?" description="Station-specific commuter tip" />
                             <ResponseField name="congestion.timeWindow" type="string" description="Current time window (AM RUSH, PM RUSH, OFF-PEAK, CLOSED, etc.)" />
                             <ResponseField name="congestion.dayType" type="string" description="monday | weekday | friday | saturday | sunday | holiday" />
                             <ResponseField name="congestion.daypart" type="string" description="am_peak | pm_peak | midday | early_morning | late_evening | closed" />
-                            <ResponseField name="congestion.confidence" type="string" description="low | medium | high â€” based on data sources" />
+                            <ResponseField name="congestion.confidence" type="string" description="low | medium | high : based on data sources" />
                             <ResponseField name="congestion.reasonCodes" type="string[]" description="Machine-readable reason codes (forecast_weight, crowd_signal, etc.)" />
                         </div>
 
@@ -371,8 +373,8 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                             <div className="space-y-2">
                                 {[
                                     { tier: 'LOW', color: 'text-emerald-400', desc: 'Seats available. Score < 2.0' },
-                                    { tier: 'MODERATE', color: 'text-yellow-400', desc: 'Standing room only. Score 2.0â€“3.4' },
-                                    { tier: 'HIGH', color: 'text-orange-400', desc: 'Expect 15â€“20 min queues. Score 3.5â€“4.4' },
+                                    { tier: 'MODERATE', color: 'text-yellow-400', desc: 'Standing room only. Score 2.0-3.4' },
+                                    { tier: 'HIGH', color: 'text-orange-400', desc: 'Expect 15-20 min queues. Score 3.5-4.4' },
                                     { tier: 'EXTREME', color: 'text-red-400', desc: 'Queue spilling to street level. Score 4.5+' },
                                 ].map((t) => (
                                     <div key={t.tier} className="flex items-center gap-3">
@@ -415,12 +417,12 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                             <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-3">Time Windows</div>
                             <div className="space-y-2">
                                 {[
-                                    { name: 'AM RUSH', time: '06:30â€“09:30 (12:00 Fri)', mult: '1.0' },
-                                    { name: 'PM RUSH', time: '17:00â€“20:30', mult: '1.0' },
-                                    { name: 'FRIDAY RUSH', time: '15:00â€“22:00', mult: '1.5' },
+                                    { name: 'AM RUSH', time: '06:30-09:30 (12:00 Fri)', mult: '1.0' },
+                                    { name: 'PM RUSH', time: '17:00-20:30', mult: '1.0' },
+                                    { name: 'FRIDAY RUSH', time: '15:00-22:00', mult: '1.5' },
                                     { name: 'OFF-PEAK', time: 'Gaps between rushes', mult: '0.4' },
-                                    { name: 'DEEP_OFF_PEAK', time: '11:00â€“16:00', mult: '0.3' },
-                                    { name: 'CLOSED', time: '23:00â€“04:30', mult: '0' },
+                                    { name: 'DEEP_OFF_PEAK', time: '11:00-16:00', mult: '0.3' },
+                                    { name: 'CLOSED', time: '23:00-04:30', mult: '0' },
                                 ].map((w) => (
                                     <div key={w.name} className="flex items-center gap-3">
                                         <code className="text-xs text-amber-400 font-mono font-bold min-w-[120px]">{w.name}</code>
@@ -436,7 +438,7 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                     <DocSection id="stall-config" title="GET /api/public/stall-config">
                         <p className="text-sm text-zinc-400 leading-relaxed mb-4">
                             Returns the stall detection configuration and thresholds. Stall detection runs client-side
-                            using GPS â€” this endpoint provides the configuration parameters only. <Badge color="bg-amber-500/10 text-amber-400">Token Required</Badge>
+                            using GPS : this endpoint provides the configuration parameters only. <Badge color="bg-amber-500/10 text-amber-400">Token Required</Badge>
                         </p>
 
                         <CopyBlock text={`curl -H "Authorization: Bearer YOUR_TOKEN" \\
@@ -445,7 +447,7 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                         <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-4 mt-4">
                             <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-3">Config Fields</div>
                             <ResponseField name="config.sampleIntervalMs" type="number" description="GPS sampling interval in milliseconds (default: 30000)" />
-                            <ResponseField name="config.thresholdKm" type="number" description="Movement threshold in km â€” below this = stalled (default: 0.1)" />
+                            <ResponseField name="config.thresholdKm" type="number" description="Movement threshold in km : below this = stalled (default: 0.1)" />
                             <ResponseField name="config.windowSamples" type="number" description="Number of consecutive samples to analyze (default: 14)" />
                             <ResponseField name="config.activationDistKm" type="number" description="Distance from origin before detection activates (default: 0.2)" />
                             <ResponseField name="config.autoDismissMs" type="number" description="Auto-dismiss timeout if user doesn't respond (default: 15000)" />
@@ -464,7 +466,7 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                                 <span className="text-xs text-amber-400 font-bold">Implementation Note</span>
                             </div>
                             <p className="text-xs text-zinc-400 leading-relaxed">
-                                Stall detection requires continuous GPS access on the client device. The server cannot detect stalls â€”
+                                Stall detection requires continuous GPS access on the client device. The server cannot detect stalls :
                                 it only provides the configuration. Underground stations are automatically skipped (no GPS signal).
                             </p>
                         </div>
@@ -600,6 +602,30 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                     </DocSection>
 
                     {/* â•â•â•â•â•â•â•â•â•â• RESPONSE FORMAT â•â•â•â•â•â•â•â•â•â• */}
+                    <DocSection id="admin-config" title="Admin Configuration">
+                        <p className="text-sm text-zinc-400 leading-relaxed">
+                            GET and PATCH /api/admin/config require a verified administrator session backed by user_roles.
+                            PATCH accepts maintenanceMode, maintenanceMessage, congestionConfig, apiConfig, and publicApiEnabled.
+                            Empty or invalid edits fail; updated_at is server-managed. The public API switch does not disable first-party navigation.
+                        </p>
+                        <CopyBlock language="json" text={JSON.stringify({ apiConfig: {
+                            version: 1, prediction: { defaultLimit: 3, validWindowS: 25, stationLookaheadMin: 45 }, corsOrigin: '*',
+                            crowd: { intervalMs: 3000, minSpeedKph: 5, requiredSamples: 2 },
+                            stall: { sampleIntervalMs: 30000, thresholdKm: 0.1, windowSamples: 14, activationDistKm: 0.2,
+                                deviceCooldownMs: 300000, maxStationDistKm: 1.5, maxReportsPerHour: 6, minDurationMin: 3 },
+                        } }, null, 2)} />
+                        <p className="text-xs text-zinc-400">apiConfig is a complete versioned object. corsOrigin is * for Unrestricted prediction reads only, or one exact HTTP(S) origin. Wildcard applies only to /api/public/predictions and its stream, with an unrestricted token and without credentialed CORS. Restricted tokens still require both an explicitly allowed origin and their own origin allowlist; other public APIs keep their explicit-origin checks. Crowd and stall abuse limits retain their existing safety floors.</p>
+                    </DocSection>
+
+                    <DocSection id="trip-history" title="Trip History">
+                        <p className="text-sm text-zinc-400 leading-relaxed">/api/trips requires a verified commuter session. All reads, totals, writes, and repair edits are owner-bound.</p>
+                        <Param name="limit" type="integer" defaultValue="3" description="GET page size, from 1 through 100." />
+                        <Param name="offset" type="integer" defaultValue="0" description="Optional nonnegative page offset. Adds pagination metadata." />
+                        <Param name="pagination" type="boolean" description="true adds limit, offset, hasMore, and nextOffset without changing the trips array." />
+                        <Param name="includeTotals" type="boolean" description="true adds totalTrips, totalFare, and totalDistance for the account's complete stored history." />
+                        <p className="text-xs text-zinc-400">POST uses client_trip_id (or X-Idempotency-Key), live rail station IDs, line/ticket/direction enums, bounded finite fare/distance/duration, and a valid started_at. Optional completed_at must follow started_at. The first stored completion and payload are preserved on retries. PATCH accepts only fare, distance_km, and direction; errors never become an empty-history success.</p>
+                    </DocSection>
+
                     <DocSection id="response-format" title="Response Format">
                         <p className="text-sm text-zinc-400 leading-relaxed mb-4">
                             All prediction endpoints return a <code className="text-xs text-zinc-300 font-mono">PredictionResponse</code> object.
@@ -694,7 +720,7 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                         </div>
                         <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-4">
                             <p className="text-xs text-zinc-400 leading-relaxed">
-                                <strong className="text-zinc-300">Edge penalty:</strong> Predictions within Â±12 minutes of service start or end are demoted one confidence tier (high â†’ medium â†’ low).
+                                <strong className="text-zinc-300">Edge penalty:</strong> Predictions within +/-12 minutes of service start or end are demoted one confidence tier (high to medium to low).
                             </p>
                         </div>
                     </DocSection>
@@ -760,15 +786,15 @@ export function ApiDocs({ embedded = false }: { embedded?: boolean }) {
                             </p>
                             <ul className="mt-3 space-y-2">
                                 <li className="text-xs text-zinc-400 flex items-start gap-2">
-                                    <span className="text-emerald-400 mt-0.5">â€¢</span>
-                                    Predictions are valid for 25 seconds â€” polling faster than that is wasteful.
+                                    <span className="text-emerald-400 mt-0.5">-</span>
+                                    Predictions are valid for 25 seconds : polling faster than that is wasteful.
                                 </li>
                                 <li className="text-xs text-zinc-400 flex items-start gap-2">
-                                    <span className="text-emerald-400 mt-0.5">â€¢</span>
-                                    Recommended polling interval: <strong className="text-white">10â€“30 seconds</strong> for live dashboards.
+                                    <span className="text-emerald-400 mt-0.5">-</span>
+                                    Recommended polling interval: <strong className="text-white">10-30 seconds</strong> for live dashboards.
                                 </li>
                                 <li className="text-xs text-zinc-400 flex items-start gap-2">
-                                    <span className="text-emerald-400 mt-0.5">â€¢</span>
+                                    <span className="text-emerald-400 mt-0.5">-</span>
                                     For real-time train presence, subscribe to the Supabase Realtime channel instead of polling.
                                 </li>
                             </ul>

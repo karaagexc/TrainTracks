@@ -19,6 +19,7 @@ import { STATIONS } from '@/data/stations';
 import { isBuiltLine } from '@/domain/railway';
 import type { LineId } from '@/types';
 import { createHash } from 'node:crypto';
+import { getTrainServiceAvailability } from '@/domain/predictions/engine';
 
 export const STALL_REPORT_CHANNEL = 'traintracks:stall-reports';
 export const STALL_REPORT_EVENT = 'stall';
@@ -109,19 +110,19 @@ if (typeof setInterval !== 'undefined') {
     cleanupInterval.unref?.();
 }
 
-function checkDeviceRateLimit(deviceHash: string, now: number): { ok: boolean; retryAfterMs?: number } {
+function checkDeviceRateLimit(deviceHash: string, now: number, config: StallReportSafetyConfig): { ok: boolean; retryAfterMs?: number } {
     const entry = deviceRateMap.get(deviceHash);
     if (!entry) return { ok: true };
 
     // Per-report cooldown
     const elapsed = now - entry.lastMs;
-    if (elapsed < STALL_ABUSE_CONFIG.deviceCooldownMs) {
-        return { ok: false, retryAfterMs: STALL_ABUSE_CONFIG.deviceCooldownMs - elapsed };
+    if (elapsed < config.deviceCooldownMs) {
+        return { ok: false, retryAfterMs: config.deviceCooldownMs - elapsed };
     }
 
     // Hourly cap
     const hourElapsed = now - entry.hourStart;
-    if (hourElapsed < 3_600_000 && entry.count >= STALL_ABUSE_CONFIG.maxReportsPerHour) {
+    if (hourElapsed < 3_600_000 && entry.count >= config.maxReportsPerHour) {
         return { ok: false, retryAfterMs: 3_600_000 - hourElapsed };
     }
 
@@ -176,13 +177,9 @@ function isWithinBounds(lat: number, lng: number): boolean {
         lng <= METRO_MANILA_BOUNDS.maxLng;
 }
 
-function isServiceClosed(now: number): boolean {
+function isServiceClosed(now: number, lineId: LineId): boolean {
     if (!STALL_ABUSE_CONFIG.enforceServiceHours) return false;
-    const date = new Date(now);
-    // Philippine time (UTC+8)
-    const utcHour = date.getUTCHours();
-    const phHour = (utcHour + 8) % 24;
-    return phHour >= 23 || phHour < 4.5;
+    return !getTrainServiceAvailability({ now: new Date(now), lineId: lineId as 'LRT1' | 'LRT2' | 'MRT3' });
 }
 
 /** Approximate distance in km using equirectangular projection */
@@ -214,13 +211,28 @@ function errorResult(
     return { ok: false, status, code, message, retryAfterMs };
 }
 
+export interface StallReportSafetyConfig {
+    deviceCooldownMs: number;
+    maxStationDistKm: number;
+    maxReportsPerHour: number;
+    minDurationMin: number;
+}
+
 export function sanitizeStallReportPayload(
     payload: unknown,
     now = Date.now(),
-    options: { enforceMemoryRateLimit?: boolean } = {},
+    options: { enforceMemoryRateLimit?: boolean; config?: StallReportSafetyConfig } = {},
 ): StallReportValidationResult {
     if (!isRecord(payload)) {
         return errorResult(400, 'invalid_payload', 'Stall report payload must be an object.');
+    }
+    const config = options.config ?? { ...STALL_ABUSE_CONFIG, minDurationMin: STALL_ABUSE_CONFIG.minStallDurationMin };
+    if (payload.locationSource !== undefined && payload.locationSource !== 'gps') {
+        return errorResult(422, 'invalid_payload', 'Only observed GPS can support a stall report.');
+    }
+    const observedAt = readNumber(payload.observedAt);
+    if (observedAt !== null && (observedAt > now + 5000 || observedAt < now - 5 * 60_000)) {
+        return errorResult(422, 'invalid_payload', 'The GPS evidence for this stall report is stale.');
     }
 
     const requestedLineId = readString(payload.lineId) as LineId | null;
@@ -229,7 +241,7 @@ export function sanitizeStallReportPayload(
     }
 
     // Service hours check
-    if (isServiceClosed(now)) {
+    if (isServiceClosed(now, requestedLineId)) {
         return errorResult(403, 'service_closed', 'Stall reports are not accepted during service closed hours (23:00\u201304:30 PHT).');
     }
 
@@ -243,7 +255,7 @@ export function sanitizeStallReportPayload(
     // Pure-domain callers retain the in-memory limiter. Production routes use
     // the transactional database limiter so retries remain idempotent.
     if (options.enforceMemoryRateLimit !== false) {
-        const rateCheck = checkDeviceRateLimit(deviceHash, now);
+        const rateCheck = checkDeviceRateLimit(deviceHash, now, config);
         if (!rateCheck.ok) {
             return errorResult(429, 'rate_limited',
                 `Device is rate-limited. Wait ${Math.ceil((rateCheck.retryAfterMs ?? 0) / 1000)}s before the next report.`,
@@ -273,15 +285,15 @@ export function sanitizeStallReportPayload(
     }
 
     const stallDurationMin = readNumber(payload.stallDurationMin);
-    if (stallDurationMin === null || stallDurationMin < STALL_ABUSE_CONFIG.minStallDurationMin || stallDurationMin > 180) {
-        return errorResult(400, 'invalid_duration', `Stall duration must be between ${STALL_ABUSE_CONFIG.minStallDurationMin} and 180 minutes.`);
+    if (stallDurationMin === null || stallDurationMin < config.minDurationMin || stallDurationMin > 180) {
+        return errorResult(400, 'invalid_duration', `Stall duration must be between ${config.minDurationMin} and 180 minutes.`);
     }
 
     // Proximity check — must be near a rail station
     const nearest = findNearestStation(lat, lng, lineId);
-    if (!nearest || nearest.distKm > STALL_ABUSE_CONFIG.maxStationDistKm) {
+    if (!nearest || nearest.distKm > config.maxStationDistKm) {
         return errorResult(400, 'too_far_from_rail',
-            `Location is ${nearest ? nearest.distKm.toFixed(1) + 'km' : 'unknown distance'} from the nearest ${lineId} station. Must be within ${STALL_ABUSE_CONFIG.maxStationDistKm}km.`);
+            `Location is ${nearest ? nearest.distKm.toFixed(1) + 'km' : 'unknown distance'} from the nearest ${lineId} station. Must be within ${config.maxStationDistKm}km.`);
     }
 
     // All checks passed — record for rate limiting

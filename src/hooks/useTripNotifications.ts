@@ -8,13 +8,37 @@ interface TripNotificationState {
     transferTargetLineId?: LineId | null;
 }
 
+export async function deliverTripNotification(
+    registration: ServiceWorkerRegistration | null,
+    title: string,
+    body: string,
+    eventKey: string,
+): Promise<boolean> {
+    if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') return false;
+    const options = { body, icon: '/gps-markers/lrt1.png', tag: eventKey, requireInteraction: true };
+    try {
+        if (registration) await registration.showNotification(title, { ...options, silent: false });
+        else new Notification(title, options);
+        return true;
+    } catch (error) {
+        console.error('Notification failed', error);
+        return false;
+    }
+}
+
 export function useTripNotifications(
     statusText: string,
     displayStation: Station | null,
     state: TripNotificationState = {},
 ) {
-    const { notificationPreference, destination, isMuted } = useTripStore();
-    const lastNotifiedStatus = useRef<string>('');
+    const notificationPreference = useTripStore((store) => store.notificationPreference);
+    const destination = useTripStore((store) => store.destination);
+    const isMuted = useTripStore((store) => store.isMuted);
+    const tripId = useTripStore((store) => store.journeySnapshot.tripId);
+    const edgeIndex = useTripStore((store) => store.journeySnapshot.activeEdgeIndex);
+    const notifiedEvents = useRef(new Set<string>());
+    const pendingEvents = useRef(new Set<string>());
+    const vibratedEvents = useRef(new Set<string>());
     const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
     const [permission, setPermission] = useState<NotificationPermission>('default');
 
@@ -24,54 +48,35 @@ export function useTripNotifications(
         }
 
         if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-            navigator.serviceWorker.ready.then((registration) => {
+            let disposed = false;
+            void navigator.serviceWorker.ready.then((registration) => {
+                if (disposed) return;
                 setSwRegistration(registration);
-            });
+            }).catch((error) => console.warn('Notification worker unavailable', error));
+            return () => { disposed = true; };
         }
     }, []);
 
-    const sendNotification = useCallback((title: string, body: string, vibratePattern: number | number[] = [200, 100, 200]) => {
-        if (isMuted || notificationPreference === 'none') return;
-        if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            navigator.vibrate(vibratePattern);
-        }
-
-        if (typeof window === 'undefined' || Notification.permission !== 'granted') return;
-
-        const options = {
-            body,
-            icon: '/gps-markers/lrt1.png',
-            tag: 'train-tracks-alert',
-            requireInteraction: true,
-        };
-
-        if (swRegistration) {
-            swRegistration.showNotification(title, {
-                ...options,
-                silent: false,
-            });
-            return;
-        }
-
-        try {
-            new Notification(title, options);
-        } catch (error) {
-            console.error('Notification failed', error);
-        }
+    const sendNotification = useCallback((title: string, body: string, eventKey: string) => {
+        if (isMuted || notificationPreference === 'none') return Promise.resolve(false);
+        return deliverTripNotification(swRegistration, title, body, eventKey);
     }, [isMuted, notificationPreference, swRegistration]);
 
     useEffect(() => {
-        if (!statusText || !displayStation) return;
+        if (!tripId || !statusText || !displayStation) return;
 
-        const uniqueKey = `${state.statusCode ?? statusText}-${displayStation.id}-${state.transferTargetLineId ?? ''}`;
-        if (lastNotifiedStatus.current === uniqueKey) return;
+        const uniqueKey = `${tripId}:${edgeIndex}:${state.statusCode ?? statusText}:${displayStation.id}:${state.transferTargetLineId ?? ''}`;
+        if (notifiedEvents.current.has(uniqueKey) || pendingEvents.current.has(uniqueKey)) return;
+        try {
+            if (sessionStorage.getItem(`traintracks-notified:${uniqueKey}`)) return;
+        } catch { /* Storage can be unavailable in private browsing. */ }
 
         let shouldNotify = false;
         let title = '';
         let body = '';
         let vibratePattern: number | number[] = [200];
 
-        if (state.statusCode === 'AT_STATION' && displayStation.id === destination?.id) {
+        if (state.statusCode === 'ARRIVED' && displayStation.id === destination?.id) {
             if (notificationPreference !== 'none') {
                 shouldNotify = true;
                 title = 'You have arrived!';
@@ -98,17 +103,29 @@ export function useTripNotifications(
             }
         }
 
-        if (!shouldNotify) return;
-
-        sendNotification(title, body, vibratePattern);
-        lastNotifiedStatus.current = uniqueKey;
-    }, [statusText, displayStation, destination, notificationPreference, sendNotification, state.statusCode, state.transferTargetLineId]);
+        if (!shouldNotify || isMuted) return;
+        if (!vibratedEvents.current.has(uniqueKey) && typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate(vibratePattern); } catch { /* Haptics are optional, never a delivery acknowledgement. */ }
+            vibratedEvents.current.add(uniqueKey);
+        }
+        pendingEvents.current.add(uniqueKey);
+        void sendNotification(title, body, uniqueKey).then((delivered) => {
+            if (!delivered) return;
+            notifiedEvents.current.add(uniqueKey);
+            try { sessionStorage.setItem(`traintracks-notified:${uniqueKey}`, '1'); } catch { /* Best-effort reload deduplication. */ }
+        }).finally(() => pendingEvents.current.delete(uniqueKey));
+    }, [tripId, edgeIndex, statusText, displayStation, destination, notificationPreference, isMuted, permission, sendNotification, state.statusCode, state.transferTargetLineId]);
 
     const requestPermission = useCallback(async () => {
         if (typeof window === 'undefined' || !('Notification' in window)) return;
 
-        const result = await Notification.requestPermission();
-        setPermission(result);
+        try {
+            const result = await Notification.requestPermission();
+            setPermission(result);
+        } catch (error) {
+            console.warn('Notification permission failed', error);
+            setPermission(Notification.permission);
+        }
     }, []);
 
     return {

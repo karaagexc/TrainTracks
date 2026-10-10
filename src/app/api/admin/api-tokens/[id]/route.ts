@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminContext } from '@/domain/auth/admin';
 import { noStoreHeaders } from '@/domain/predictions/http';
-import { isPublicApiScope, normalizePublicApiScopes } from '@/domain/predictions/apiScopes';
+import { validateTokenEdit } from '@/domain/auth/token';
+import { isSameOriginMutation } from '@/domain/auth/request';
 import { createAdminClient, hasAdminSupabaseConfig } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -27,40 +28,19 @@ export async function PATCH(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> },
 ) {
+    if (!isSameOriginMutation(request)) return NextResponse.json({ ok: false, error: 'forbidden_origin' }, { status: 403, headers: noStoreHeaders() });
     const denied = await guard();
     if (denied) return denied;
 
     const { id } = await params;
-    const payload = await request.json().catch(() => null) as Record<string, unknown> | null;
-    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-    if (typeof payload?.name === 'string' && payload.name.trim()) {
-        updates.name = payload.name.trim().slice(0, 80);
-    }
-    if (typeof payload?.isActive === 'boolean') {
-        updates.is_active = payload.isActive;
-    }
-    if (Array.isArray(payload?.scopes)) {
-        if (payload.scopes.length === 0 || !payload.scopes.every(isPublicApiScope)) {
-            return NextResponse.json({ ok: false, error: 'invalid_scopes' }, {
-                status: 400,
-                headers: noStoreHeaders(),
-            });
-        }
-        updates.scopes = normalizePublicApiScopes(payload.scopes);
-    }
-    if (Array.isArray(payload?.allowedOrigins)) {
-        updates.allowed_origins = payload.allowedOrigins
-            .filter((origin): origin is string => typeof origin === 'string')
-            .map((origin) => origin.trim())
-            .filter((origin) => /^https?:\/\//i.test(origin))
-            .slice(0, 20);
-    }
+    const payload: unknown = await request.json().catch(() => null);
+    const validated = validateTokenEdit(payload);
+    if (!validated.ok) return NextResponse.json({ ok: false, error: validated.error }, { status: 400, headers: noStoreHeaders() });
 
     const admin = createAdminClient();
     const { data, error } = await admin
         .from('api_tokens')
-        .update(updates)
+        .update(validated.value)
         .eq('id', id)
         .select('id,name,token_prefix,scopes,allowed_origins,is_active,expires_at,last_used_at,updated_at')
         .maybeSingle();
@@ -75,6 +55,7 @@ export async function DELETE(
     _request: NextRequest,
     { params }: { params: Promise<{ id: string }> },
 ) {
+    if (!isSameOriginMutation(_request)) return NextResponse.json({ ok: false, error: 'forbidden_origin' }, { status: 403, headers: noStoreHeaders() });
     const denied = await guard();
     if (denied) return denied;
 

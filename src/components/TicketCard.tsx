@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from 'zustand/react/shallow';
 import { Direction, LineId, LocationStatus, Station, TicketType } from "@/types";
 import { cn } from "@/lib/utils";
 import { getLineColor, getStationBadge, getThemeColors, getDoorSide } from "@/utils/stationUtils";
@@ -8,8 +9,7 @@ import { Marquee } from "@/components/ui/Marquee";
 import { AlertTriangle, MapPin, Navigation, Loader2, Ruler, Timer, Coins, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useTripStore } from "@/store/useTripStore";
-import { getDistanceKm } from "@/utils/geo";
-import { getPrecisionFare } from "@/utils/fareNew";
+import { getFareQuoteForRoute } from "@/utils/fareNew";
 import {
     BUS_STOP_BOARDING_RADIUS_KM,
     RAIL_STATION_BOARDING_RADIUS_KM,
@@ -115,11 +115,45 @@ export function TicketCard({
 }: Props) {
 
     // === ALL HOOKS AT TOP (React rules of hooks — no hooks after early returns) ===
-    const { isDarkMode, status: tripStatus, destination, reset: resetTrip, isDevMode, transitMode: selectedTransitMode } = useTripStore();
+    const { isDarkMode, status: tripStatus, destination, reset: resetTrip, isDevMode, transitMode: selectedTransitMode,
+        pendingCompletedTrip, historySaveState, historySaveError } = useTripStore(useShallow((state) => ({
+            isDarkMode: state.isDarkMode, status: state.status, destination: state.destination, reset: state.reset,
+            isDevMode: state.isDevMode, transitMode: state.transitMode,
+            pendingCompletedTrip: state.pendingCompletedTrip, historySaveState: state.historySaveState, historySaveError: state.historySaveError,
+        })));
+    const receiptPending = Boolean(pendingCompletedTrip);
     const isBusMode = isDevMode && selectedTransitMode === 'bus';
+    const snapshot = useTripStore(useShallow((state) => ({
+        tripId: state.journeySnapshot.tripId, startedAt: state.journeySnapshot.startedAt,
+        completedAt: state.journeySnapshot.completedAt, completedDistanceMeters: state.journeySnapshot.completedDistanceMeters,
+    })));
+    const receiptRoute = useTripStore((state) => state.computedRoute);
+    const receiptVerification = useMemo(() => tripStatus === 'ARRIVED'
+        ? getFareQuoteForRoute(receiptRoute, ticketType || 'SJT', snapshot.startedAt ?? Date.now()) : null,
+    [tripStatus, receiptRoute, ticketType, snapshot.startedAt]);
+    const unverifiedReceipt = receiptVerification?.segments.some((segment) => segment.verification === 'unverified');
+    const receiptVerificationNote = [...new Set(receiptVerification?.segments.map((segment) => segment.verificationNote).filter(Boolean))].join(' ');
+    const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const progressPercent = clampPercent(progress);
     const [arrivalCountdown, setArrivalCountdown] = useState(AUTO_CLOSE_DELAY);
     const [arrivalFading, setArrivalFading] = useState(false);
+    const scheduleReset = useCallback((delay: number) => {
+        if (useTripStore.getState().pendingCompletedTrip) return false;
+        if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+        const tripId = snapshot.tripId;
+        resetTimeoutRef.current = setTimeout(() => {
+            const current = useTripStore.getState();
+            if (current.status === 'ARRIVED' && current.journeySnapshot.tripId === tripId) {
+                if (current.pendingCompletedTrip) setArrivalFading(false);
+                else resetTrip();
+            }
+        }, delay);
+        return true;
+    }, [resetTrip, snapshot.tripId]);
+
+    useEffect(() => () => {
+        if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+    }, [snapshot.tripId, tripStatus]);
 
     // Event-driven gradient flash for Active Trip card
     const [gradientFlash, setGradientFlash] = useState(false);
@@ -143,21 +177,20 @@ export function TicketCard({
         if (tripStatus !== 'ARRIVED' || !origin) return;
         setArrivalCountdown(AUTO_CLOSE_DELAY);
         setArrivalFading(false);
+        if (receiptPending) return;
 
+        const closeAt = Date.now() + AUTO_CLOSE_DELAY * 1000;
         const timer = setInterval(() => {
-            setArrivalCountdown(prev => {
-                if (prev <= 1) {
-                    clearInterval(timer);
-                    setArrivalFading(true);
-                    setTimeout(() => resetTrip(), 500);
-                    return 0;
-                }
-                return prev - 1;
-            });
+            const remaining = Math.max(0, Math.ceil((closeAt - Date.now()) / 1000));
+            setArrivalCountdown(remaining);
+            if (remaining === 0) {
+                clearInterval(timer);
+                if (scheduleReset(500)) setArrivalFading(true);
+            }
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [tripStatus, origin, resetTrip]);
+    }, [tripStatus, origin?.id, snapshot.tripId, scheduleReset, receiptPending]);
 
     // --- MODE 1: SCANNING / LOCATING (No Origin) ---
     if (!origin && scanningState) {
@@ -451,14 +484,15 @@ export function TicketCard({
         const arrColor = getLineColor(arrivedStation.lineId);
 
         // Trip Stats Calculation
-        const distKm = getDistanceKm(origin, arrivedStation);
-        const distText = distKm < 1 ? `${Math.round(distKm * 1000)}m` : `${distKm.toFixed(1)}km`;
-
-        // Est Duration (Mock 30km/h avg speed + 2 mins buffer)
-        const durationMin = Math.ceil((distKm / 30) * 60) + 2;
-
-        // Fare Calculation
-        const finalFare = getPrecisionFare(origin, arrivedStation, ticketType || (origin.lineId === 'EDSA' ? 'BUS_REGULAR' : 'SJT'));
+        const distance = snapshot.completedDistanceMeters;
+        const distText = Number.isFinite(distance) && distance >= 0
+            ? distance < 1000 ? `${Math.round(distance)}m` : `${(distance / 1000).toFixed(1)}km`
+            : '--';
+        const durationMin = snapshot.startedAt != null && snapshot.completedAt != null
+            && snapshot.completedAt >= snapshot.startedAt
+            ? Math.round((snapshot.completedAt - snapshot.startedAt) / 60000)
+            : null;
+        const finalFare = runningFare;
 
         // Reminder Text
         const exitCard = origin.lineId === 'EDSA'
@@ -542,11 +576,11 @@ export function TicketCard({
                     <div className="flex flex-col items-center p-3 rounded-2xl bg-black/20 border border-white/5">
                         <Timer className="w-4 h-4 text-white/50 mb-1" />
                         <span className="text-[10px] text-white/50 uppercase tracking-wider">Time</span>
-                        <span className="text-lg font-bold text-white">{durationMin}<span className="text-xs font-normal text-white/50 ml-0.5">min</span></span>
+                        <span className="text-lg font-bold text-white">{durationMin ?? '--'}<span className="text-xs font-normal text-white/50 ml-0.5">min</span></span>
                     </div>
                     <div className="flex flex-col items-center p-3 rounded-2xl bg-black/20 border border-white/5">
                         <Coins className={cn("w-4 h-4 mb-1", arrivedStation.lineId === 'EDSA' ? 'text-[#f1e4d1]' : 'text-emerald-400')} />
-                        <span className="text-[10px] text-white/50 uppercase tracking-wider">Total Fare</span>
+                        <span className="text-[10px] text-white/50 uppercase tracking-wider" title={receiptVerificationNote || undefined}>{unverifiedReceipt ? 'Unverified Fare' : 'Total Fare'}</span>
                         <span className={cn("text-lg font-bold", arrivedStation.lineId === 'EDSA' ? 'text-[#f1e4d1]' : 'text-emerald-400')}>₱{finalFare}</span>
                     </div>
                 </div>
@@ -562,9 +596,10 @@ export function TicketCard({
                 <div className="px-5 md:px-8 pb-2 relative z-10">
                     <button
                         onClick={() => {
-                            setArrivalFading(true);
-                            setTimeout(() => resetTrip(), 400);
+                            if (scheduleReset(400)) setArrivalFading(true);
                         }}
+                        disabled={receiptPending}
+                        aria-busy={historySaveState === 'saving'}
                         className={cn(
                             "w-full py-4 rounded-2xl font-black text-lg shadow-xl flex items-center justify-center gap-2 transition-all active:scale-95",
                             arrivedStation.lineId === 'EDSA'
@@ -579,8 +614,13 @@ export function TicketCard({
 
                 {/* Auto-Close Timer */}
                 <div className="px-5 md:px-8 pb-5 md:pb-8 relative z-10 flex flex-col items-center justify-center pt-3">
-                    <p className="text-[10px] text-white/40 font-mono mb-2">
-                        Auto-closing in {arrivalCountdown}s
+                    <p className="text-[10px] text-white/40 font-mono mb-2"
+                        role={historySaveState === 'failed' ? 'alert' : 'status'}
+                        title={historySaveError ?? undefined}
+                        aria-label={historySaveState === 'failed' ? `History not queued; receipt retained. ${historySaveError ?? ''}` : undefined}>
+                        {receiptPending
+                            ? historySaveState === 'failed' ? 'History not queued; receipt retained' : 'Retaining trip history...'
+                            : `Auto-closing in ${arrivalCountdown}s`}
                     </p>
                     <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden max-w-[200px]">
                         <div
@@ -660,11 +700,15 @@ export function TicketCard({
 
             {/* Leg Progress Bar */}
             <div className="w-full px-8 pb-4">
-                <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden"
+                    role="progressbar"
+                    aria-label="Current leg progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(progressPercent)}>
                     <div
                         className={cn("h-full transition-all duration-500 ease-out", isArrived ? "bg-emerald-500" : "bg-white")}
                         style={{ width: `${progressPercent}%` }}
-                        aria-label={`Leg progress ${Math.round(progressPercent)} percent`}
                     />
                 </div>
             </div>

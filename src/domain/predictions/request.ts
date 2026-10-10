@@ -24,10 +24,10 @@ export function parsePredictionMode(value: string | null): OperationalMode {
         : 'live';
 }
 
-export function parsePredictionLimit(value: string | null): number {
-    if (!value) return 3;
+export function parsePredictionLimit(value: string | null): number | undefined {
+    if (!value) return undefined;
     const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 3;
+    return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 export function parsePredictionRequestFromUrl(url: URL): PredictionRequest {

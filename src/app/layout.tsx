@@ -29,8 +29,7 @@ export const viewport: Viewport = {
   themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  userScalable: true,
 };
 
 export default function RootLayout({
@@ -74,7 +73,7 @@ export default function RootLayout({
             </div>
           </div>
         </noscript>
-        <div className="w-full h-full relative overflow-hidden bg-black" suppressHydrationWarning>
+        <div id="traintracks-app-root" className="w-full h-full relative overflow-hidden bg-black" suppressHydrationWarning>
           <ErrorBoundary>
             {children}
           </ErrorBoundary>

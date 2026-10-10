@@ -17,13 +17,14 @@ import { Train, ArrowDown, ArrowUp, ArrowLeft, ArrowRight } from 'lucide-react';
 import { Marquee } from '@/components/ui/Marquee';
 import { getTerminusLabel, getNetworkStations, getLineStations, getOperationalMode, isForwardDirection } from '@/domain/railway';
 import { getSegmentTime } from '@/data/segmentDistances';
+import { platformTrains, platformEmptyMessage, formatForecastEta } from './platformForecasts';
 
 const BADGE_STATIONS = getNetworkStations('sandbox', 'WITH_NA');
 
 function sourceLabel(train: TrainPresence) {
     switch (train.source) {
         case 'predicted':
-            return { text: 'Predicted', className: 'text-blue-400' };
+            return { text: 'Forecast', className: 'text-blue-400' };
         case 'crowd':
             return { text: 'Crowdsourced', className: 'text-cyan-400' };
         case 'simulated':
@@ -41,11 +42,6 @@ function freshnessMeta(train: TrainPresence) {
         return { dot: 'bg-cyan-300', text: 'text-cyan-300', chip: 'border-cyan-300/20 bg-cyan-300/10' };
     }
     return { dot: 'bg-emerald-400', text: 'text-emerald-400', chip: 'border-emerald-400/20 bg-emerald-400/10' };
-}
-
-function truthRank(train: TrainPresence): number {
-    if (train.source === 'operator' || train.source === 'crowd' || train.source === 'simulated') return 0;
-    return 1;
 }
 
 function getTrainLocationLabel(train: TrainPresence): string {
@@ -120,7 +116,12 @@ function DirectionIcon({ direction }: { direction: string }) {
 
 export function UpcomingTrainsCard() {
     const trains = useTrainStore((s) => s.trains);
+    const forecasts = useTrainStore((s) => s.stationForecasts);
+    const predictionState = useTrainStore((s) => s.predictionState);
+    const predictionError = useTrainStore((s) => s.predictionError);
+    const predictionSnapshots = useTrainStore((s) => s.predictionSnapshots);
     const selectTrain = useTrainStore((s) => s.selectTrain);
+    const selectStation = useTrainStore((s) => s.selectStation);
     const setSpectatorMode = useTrainStore((s) => s.setSpectatorMode);
     const currentStation = useTripStore((s) => s.currentStation || s.origin);
     const direction = useTripStore((s) => s.direction);
@@ -137,29 +138,8 @@ export function UpcomingTrainsCard() {
     const upcomingTrains = useMemo(() => {
         if (!currentStation || !direction || !lineStations.length) return [];
 
-        return trains
-            .filter((train) => {
-                if (train.lineId !== currentStation.lineId) return false;
-                if (train.direction !== direction) return false;
-                if (train.predictionScope === 'station') return false;
-                if (!train.stationId) return false;
-
-                const trainStation = lineStations.find((s) => s.id === train.stationId);
-                if (!trainStation) return false;
-
-                const forward = isForwardDirection(train.direction);
-                if (forward) return trainStation.order <= currentStation.order;
-                return trainStation.order >= currentStation.order;
-            })
-            .sort((left, right) => {
-                const leftStation = lineStations.find((s) => s.id === left.stationId);
-                const rightStation = lineStations.find((s) => s.id === right.stationId);
-                const leftDist = Math.abs((leftStation?.order ?? 0) - currentStation.order);
-                const rightDist = Math.abs((rightStation?.order ?? 0) - currentStation.order);
-                return truthRank(left) - truthRank(right) || leftDist - rightDist || right.confidence - left.confidence;
-            })
-            .slice(0, 3);
-    }, [trains, currentStation, direction, lineStations]);
+        return platformTrains(trains, forecasts, currentStation, lineStations, direction).slice(0, 3);
+    }, [trains, forecasts, currentStation, direction, lineStations]);
 
     if (status === 'TRANSIT' || status === 'ARRIVED') {
         return null;
@@ -205,7 +185,11 @@ export function UpcomingTrainsCard() {
                 </div>
                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/30 border border-white/10 shrink-0">
                     <DirectionIcon direction={direction} />
-                    <span className="text-[9px] font-bold text-white/50 uppercase tracking-wider whitespace-nowrap">{directionLabel}</span>
+                    <span className="text-[9px] font-bold text-white/50 uppercase tracking-wider whitespace-nowrap" role="status" title={predictionError ?? undefined}>
+                        {directionLabel}{predictionState === 'offline' ? ' / Offline'
+                            : predictionState === 'error' ? ' / Unavailable'
+                            : predictionState === 'stale' ? ' / Stale' : ''}
+                    </span>
                 </div>
             </div>
 
@@ -213,8 +197,8 @@ export function UpcomingTrainsCard() {
                 {upcomingTrains.length === 0 ? (
                     <div className="p-4 rounded-xl bg-black/20 border border-white/5 text-center space-y-1">
                         <Train className="w-5 h-5 text-white/20 mx-auto" />
-                        <p className="text-xs text-white/40">Waiting for {waitingDirectionLabel} trains...</p>
-                        <p className="text-[10px] text-white/25">Crowd truth first, predictions as backup</p>
+                        <p className="text-xs text-white/40" role="status">{platformEmptyMessage(predictionState, predictionError, predictionSnapshots, currentStation.id, direction)}</p>
+                        <p className="text-[10px] text-white/25">{waitingDirectionLabel} platform</p>
                     </div>
                 ) : (
                     upcomingTrains.map((train, idx) => {
@@ -222,12 +206,13 @@ export function UpcomingTrainsCard() {
                         const freshness = freshnessMeta(train);
                         const isStale = train.freshness === 'stale';
                         const approach = estimateEtaToStation(train.stationId, currentStation.id, lineStations, train.direction);
-                        const etaDisplay = approach ? `ETA ${formatApproachEta(approach.etaSeconds, approach.stopsAway)}` : getTrainSpeedLabel(train);
-                        const stopsLabel = approach && approach.stopsAway > 0 ? `${approach.stopsAway} stop${approach.stopsAway > 1 ? 's' : ''} away` : 'at station';
+                        const isForecast = train.predictionScope === 'station';
+                        const etaDisplay = isForecast ? formatForecastEta(train) : approach ? `ETA ${formatApproachEta(approach.etaSeconds, approach.stopsAway)}` : getTrainSpeedLabel(train);
+                        const stopsLabel = isForecast ? 'platform forecast' : approach && approach.stopsAway > 0 ? `${approach.stopsAway} stop${approach.stopsAway > 1 ? 's' : ''} away` : 'at station';
                         return (
                             <button
                                 key={train.id}
-                                onClick={() => { selectTrain(train.id); setSpectatorMode(true); }}
+                                onClick={() => { if (isForecast) selectStation(currentStation.id); else selectTrain(train.id); setSpectatorMode(true); }}
                                 className={cn(
                                     "w-full flex items-center gap-3 p-3 rounded-xl bg-black/20 border border-white/5 transition-all animate-in fade-in slide-in-from-bottom-1 duration-300 text-left hover:bg-white/5 cursor-pointer",
                                     isStale && "opacity-75"
@@ -240,7 +225,7 @@ export function UpcomingTrainsCard() {
                                         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/40 border border-white/5">
                                             <div className={cn("w-1.5 h-1.5 rounded-full", freshness.dot, !isStale && "animate-pulse")} />
                                             <span className={cn("text-[9px] font-bold uppercase tracking-wider", freshness.text)}>
-                                                {getTrainStatusLabel(train)}
+                                                {isForecast ? 'Forecast' : getTrainStatusLabel(train)}
                                             </span>
                                         </div>
                                         {idx === 0 && (

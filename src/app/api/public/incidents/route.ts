@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listDurableIncidents } from '@/domain/crowd/durableIncidents';
+import { listDurableIncidentSnapshot } from '@/domain/crowd/durableIncidents';
 import { verifyPredictionApiAccess } from '@/domain/predictions/apiAccess';
-import { getPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
+import { getPublicApiHeaders, getConfiguredPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
 import type { LineId } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 const VALID_LINES = new Set<LineId>(['LRT1', 'LRT2', 'MRT3']);
 
 export async function OPTIONS(request: NextRequest) {
-    return new Response(null, { status: 204, headers: getPublicApiHeaders(request) });
+    return new Response(null, { status: 204, headers: await getConfiguredPublicApiHeaders(request) });
 }
 
 export async function GET(request: NextRequest) {
@@ -29,11 +29,14 @@ export async function GET(request: NextRequest) {
         });
     }
 
+    const result = await listDurableIncidentSnapshot(rawLine ?? null);
     return NextResponse.json({
-        ok: true,
+        ok: result.ok,
         generatedAt: new Date().toISOString(),
-        incidents: await listDurableIncidents(rawLine ?? null),
+        incidents: result.incidents,
+        error: result.ok ? null : 'incident_storage_unavailable',
     }, {
         headers: noStoreHeaders(getPublicApiHeaders(request)),
+        status: result.status,
     });
 }

@@ -2,13 +2,13 @@ import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminContext } from '@/domain/auth/admin';
 import { hashPredictionApiToken } from '@/domain/predictions/apiAccess';
-import { isPublicApiScope, normalizePublicApiScopes, type PublicApiScope } from '@/domain/predictions/apiScopes';
+import { validateTokenEdit } from '@/domain/auth/token';
+import { isSameOriginMutation } from '@/domain/auth/request';
 import { noStoreHeaders } from '@/domain/predictions/http';
 import { createAdminClient, hasAdminSupabaseConfig } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
-const DEFAULT_SCOPES: PublicApiScope[] = ['predictions:read'];
 
 function unavailable() {
     return NextResponse.json({ ok: false, error: 'server_not_configured' }, {
@@ -48,6 +48,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+    if (!isSameOriginMutation(request)) return NextResponse.json({ ok: false, error: 'forbidden_origin' }, { status: 403, headers: noStoreHeaders() });
     const context = await authorize();
     if (!context) {
         return NextResponse.json({ ok: false, error: 'forbidden' }, {
@@ -57,62 +58,30 @@ export async function POST(request: NextRequest) {
     }
     if (!hasAdminSupabaseConfig()) return unavailable();
 
-    const payload = await request.json().catch(() => null) as Record<string, unknown> | null;
-    const name = typeof payload?.name === 'string' ? payload.name.trim().slice(0, 80) : '';
-    if (!name) {
-        return NextResponse.json({ ok: false, error: 'invalid_name' }, {
-            status: 400,
-            headers: noStoreHeaders(),
-        });
-    }
-
-    if (Array.isArray(payload?.scopes) && (
-        payload.scopes.length === 0 ||
-        !payload.scopes.every(isPublicApiScope)
-    )) {
-        return NextResponse.json({ ok: false, error: 'invalid_scopes' }, {
-            status: 400,
-            headers: noStoreHeaders(),
-        });
-    }
-    const scopes = Array.isArray(payload?.scopes)
-        ? normalizePublicApiScopes(payload.scopes)
-        : DEFAULT_SCOPES;
-    const allowedOrigins = Array.isArray(payload?.allowedOrigins)
-        ? payload.allowedOrigins
-            .filter((origin): origin is string => typeof origin === 'string')
-            .map((origin) => origin.trim())
-            .filter((origin) => /^https?:\/\//i.test(origin))
-            .slice(0, 20)
-        : [];
-    const expiresAt = typeof payload?.expiresAt === 'string'
-        && Number.isFinite(new Date(payload.expiresAt).getTime())
-        ? new Date(payload.expiresAt).toISOString()
-        : null;
+    const payload: unknown = await request.json().catch(() => null);
+    const validated = validateTokenEdit(payload, true);
+    if (!validated.ok) return NextResponse.json({ ok: false, error: validated.error }, { status: 400, headers: noStoreHeaders() });
 
     const rawToken = `tt_live_${randomBytes(24).toString('base64url')}`;
     const admin = createAdminClient();
     const { data, error } = await admin
         .from('api_tokens')
         .insert({
-            name,
+            ...validated.value,
             token_hash: hashPredictionApiToken(rawToken),
             token_prefix: rawToken.slice(0, 16),
-            scopes,
-            allowed_origins: allowedOrigins,
-            expires_at: expiresAt,
             created_by: context.user.id,
         })
         .select('id,name,token_prefix,scopes,allowed_origins,is_active,expires_at,created_at')
         .single();
 
     return NextResponse.json({
-        ok: !error,
-        token: error ? null : rawToken,
+        ok: !error && !!data,
+        token: error || !data ? null : rawToken,
         record: data ?? null,
-        error: error?.message ?? null,
+        error: error?.message ?? (!data ? 'Token write was not acknowledged.' : null),
     }, {
-        status: error ? 500 : 201,
+        status: error || !data ? 500 : 201,
         headers: noStoreHeaders(),
     });
 }

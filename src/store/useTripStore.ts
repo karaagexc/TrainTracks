@@ -1,17 +1,20 @@
 import { create } from 'zustand';
 import { Direction, LegacyDirection, Line7Mode, Station, LineId, TicketType, TransitMode } from '@/types';
-import { getPrecisionFare } from "@/utils/fareNew";
+import { getFareQuoteForRoute, getPrecisionFare } from "@/utils/fareNew";
 import { buildJourneyRoute, getJourneyRouteStations } from '@/domain/journey/routeBuilder';
 import {
     createIdleJourneySnapshot,
     createJourneySnapshot,
+    createJourneyPreviewSnapshot,
+    amendJourneySnapshot,
     getJourneyCompatibilityStatus,
     reduceJourneySnapshot,
 } from '@/domain/journey/engine';
-import { JourneySnapshot } from '@/domain/journey/types';
+import { JourneyRoute, JourneySnapshot } from '@/domain/journey/types';
 import { getJourneyStationById } from '@/domain/journey/graph';
 import { getDirectionForStations, getOperationalMode, normalizeDirection } from '@/domain/railway';
 import type { CongestionConfig } from '@/domain/congestion/engine';
+import { parseActiveTripCheckpoint } from '@/domain/offline/tripCheckpoint';
 import type {
     ActiveTripCheckpoint,
     DataMode,
@@ -19,6 +22,15 @@ import type {
     ThemePreference,
 } from '@/domain/offline/tripCheckpoint';
 interface TripState {
+    persistenceError: string | null;
+    setPersistenceError: (error: string | null) => void;
+    historySaveState: 'idle' | 'saving' | 'queued' | 'failed';
+    historySaveError: string | null;
+    pendingCompletedTrip: Record<string, unknown> | null;
+    retainCompletedTrip: (draft: Record<string, unknown>) => void;
+    acknowledgeCompletedTrip: () => void;
+    setHistorySaveFailure: (error: string) => void;
+    discardCompletedTrip: () => void;
     // Live Navigation State
     walkingDistance: number | null;
 
@@ -41,6 +53,9 @@ interface TripState {
     direction: Direction | null;
     runningFare: number;
     tripStartedAt: number | null;
+    authenticatedUserId: string | null;
+    tripOwnerId: string | null;
+    setAuthenticatedUserId: (id: string | null) => void;
 
     // Favorites
     favorites: { originId: string; destId: string }[];
@@ -56,6 +71,9 @@ interface TripState {
     setCurrentStation: (station: Station | null) => void;
     setTicketType: (type: TicketType) => void;
     startTrip: () => void;
+    beginTrip: () => void;
+    amendTrip: (changes: { destination?: Station | null; ticketType?: TicketType }) => void;
+    confirmTransfer: (edgeId: string) => void;
     endTrip: () => void;
     setStatus: (status: 'IDLE' | 'WAITING' | 'TRANSIT' | 'ARRIVED') => void;
     setDirection: (dir: Direction | LegacyDirection) => void;
@@ -78,6 +96,7 @@ interface TripState {
 
     // GPS Override
     simulatedLocation: { latitude: number; longitude: number } | null;
+    simulatedTimestamp: number | null;
     simulatedHeading: number | null;
     simulatedSpeed: number | null;
     fallbackLocation: { latitude: number; longitude: number } | null;
@@ -157,13 +176,15 @@ function getJourneySyncPatch(
     snapshot: JourneySnapshot,
     state?: Pick<TripState, 'origin' | 'ticketType' | 'runningFare'>,
 ) {
-    const currentRouteIndex = snapshot.route && snapshot.currentStationId
-        ? Math.max(0, snapshot.route.stationIds.findIndex((stationId) => stationId === snapshot.currentStationId))
-        : snapshot.activeEdgeIndex;
+    const currentRouteIndex = snapshot.phase === 'ARRIVED' && snapshot.route
+        ? snapshot.route.stationIds.length - 1 : snapshot.activeEdgeIndex;
     const currentStation = snapshot.currentStationId ? getJourneyStationById(snapshot.currentStationId) : null;
     const nextStation = snapshot.nextStationId ? getJourneyStationById(snapshot.nextStationId) : null;
+    const completedStations = snapshot.route?.stationIds.slice(0, currentRouteIndex + 1)
+        .map(getJourneyStationById).filter((station): station is Station => Boolean(station));
     const runningFare = state?.origin && state.ticketType && currentStation
-        ? getPrecisionFare(state.origin, currentStation, state.ticketType)
+        ? completedStations ? getFareQuoteForRoute(completedStations, state.ticketType, snapshot.startedAt ?? Date.now()).total
+            : getPrecisionFare(state.origin, currentStation, state.ticketType)
         : state?.runningFare;
 
     return {
@@ -175,6 +196,10 @@ function getJourneySyncPatch(
         status: getJourneyCompatibilityStatus(snapshot),
         direction: snapshot.direction,
         walkingDistance: snapshot.walkingDistanceMeters,
+        tripStartedAt: snapshot.startedAt,
+        fallbackLocation: snapshot.gpsFallbackActive || snapshot.estimatorMode === 'RECOVERING' ? snapshot.estimatedLocation : null,
+        fallbackSpeed: snapshot.gpsFallbackActive || snapshot.estimatorMode === 'RECOVERING' ? snapshot.estimatedSpeedKph : null,
+        isFallbackLocationActive: Boolean(snapshot.estimatedLocation && (snapshot.gpsFallbackActive || snapshot.estimatorMode === 'RECOVERING')),
         ...(runningFare !== undefined ? { runningFare } : {}),
     } satisfies Partial<TripState>;
 }
@@ -188,28 +213,18 @@ function resolveThemePreference(preference: ThemePreference): boolean {
 function buildCheckpointRestorePatch(
     checkpoint: ActiveTripCheckpoint,
 ): Partial<TripState> | null {
-    if (checkpoint.isDevMode) return null;
+    const validated = parseActiveTripCheckpoint(checkpoint);
+    if (!validated) return null;
+    checkpoint = validated;
 
     const origin = getJourneyStationById(checkpoint.originId);
     const destination = getJourneyStationById(checkpoint.destinationId);
     if (!origin || !destination || checkpoint.tripStartedAt <= 0) return null;
 
-    const { journeyRoute } = buildRouteData(
-        origin,
-        destination,
-        checkpoint.isDevMode,
-        checkpoint.line7Mode,
-        checkpoint.transitMode,
-    );
+    const journeyRoute = checkpoint.journeySnapshot.route;
     if (!journeyRoute) return null;
 
     const stored = checkpoint.journeySnapshot;
-    const storedIds = stored.route?.stationIds ?? [];
-    const routeMatches = storedIds.length === journeyRoute.stationIds.length
-        && storedIds.every((stationId, index) => stationId === journeyRoute.stationIds[index]);
-    if (!routeMatches || !stored.currentStationId || !journeyRoute.stationIds.includes(stored.currentStationId)) {
-        return null;
-    }
     if (stored.phase === 'IDLE' || stored.phase === 'ARRIVED') return null;
 
     const snapshot: JourneySnapshot = {
@@ -237,21 +252,28 @@ function buildCheckpointRestorePatch(
         isDevMode: checkpoint.isDevMode,
         runningFare: syncPatch.runningFare ?? checkpoint.runningFare,
         tripStartedAt: checkpoint.tripStartedAt,
+        tripOwnerId: checkpoint.ownerId,
         status: getJourneyCompatibilityStatus(snapshot),
         pendingTripRecovery: null,
         isGpsOverride: false,
         simulatedLocation: null,
+        simulatedTimestamp: null,
         simulatedHeading: null,
         simulatedSpeed: null,
-        isFallbackLocationActive: false,
-        fallbackLocation: null,
-        fallbackHeading: null,
-        fallbackSpeed: null,
         gpsReconnecting: snapshot.gpsFallbackActive,
     };
 }
 
 export const useTripStore = create<TripState>((set, get) => ({
+    persistenceError: null,
+    setPersistenceError: (error) => set((state) => state.persistenceError === error ? state : { persistenceError: error }),
+    historySaveState: 'idle',
+    historySaveError: null,
+    pendingCompletedTrip: null,
+    retainCompletedTrip: (draft) => set({ pendingCompletedTrip: draft, historySaveState: 'saving', historySaveError: null }),
+    acknowledgeCompletedTrip: () => set({ pendingCompletedTrip: null, historySaveState: 'queued', historySaveError: null }),
+    setHistorySaveFailure: (error) => set({ historySaveState: 'failed', historySaveError: error }),
+    discardCompletedTrip: () => set({ pendingCompletedTrip: null, historySaveState: 'idle', historySaveError: null }),
     // Initial State
     transitMode: 'train',
     selectedLine: null,
@@ -267,6 +289,11 @@ export const useTripStore = create<TripState>((set, get) => ({
     direction: null,
     runningFare: 0,
     tripStartedAt: null,
+    authenticatedUserId: null,
+    tripOwnerId: null,
+    setAuthenticatedUserId: (id) => {
+        if (get().authenticatedUserId !== id) set({ authenticatedUserId: id });
+    },
     favorites: [],
     pendingTripRecovery: null,
     persistenceHydrated: false,
@@ -280,6 +307,7 @@ export const useTripStore = create<TripState>((set, get) => ({
     // GPS Override Defaults
     isGpsOverride: false,
     simulatedLocation: null,
+    simulatedTimestamp: null,
     simulatedHeading: null,
     simulatedSpeed: null,
     fallbackLocation: null,
@@ -296,10 +324,11 @@ export const useTripStore = create<TripState>((set, get) => ({
     lastManualEntryTime: 0,
     setLastManualEntryTime: (time) => set({ lastManualEntryTime: time }),
     gpsReconnecting: false,
-    setGpsReconnecting: (val) => set({ gpsReconnecting: val }),
+    setGpsReconnecting: (val) => set((state) => state.gpsReconnecting === val ? state : { gpsReconnecting: val }),
 
 
     setTransitMode: (mode) => {
+        if (get().status !== 'IDLE' || get().pendingCompletedTrip) return;
         const nextMode: TransitMode = mode === 'bus' && !get().isDevMode ? 'train' : mode;
         const selectedLine: LineId | null = nextMode === 'bus' ? 'EDSA' : null;
         set({
@@ -327,11 +356,13 @@ export const useTripStore = create<TripState>((set, get) => ({
     },
 
     selectLine: (lineId) => set((state) => {
+        if (state.status !== 'IDLE' || state.pendingCompletedTrip) return state;
         const nextLine = state.transitMode === 'bus' ? 'EDSA' : lineId === 'EDSA' ? null : lineId;
         return { selectedLine: nextLine, origin: null, destination: null };
     }),
 
     setOrigin: (station) => {
+        if (get().status !== 'IDLE' || get().pendingCompletedTrip) return;
         set({
             origin: station,
             selectedLine: station.lineId,
@@ -357,6 +388,12 @@ export const useTripStore = create<TripState>((set, get) => ({
     // Mid-trip origin correction: updates origin WITHOUT clearing destination/status/direction
     // Used by WrongDirectionAlert to avoid nuking the user's trip
     updateOriginKeepTrip: (station) => {
+        if (get().status === 'WAITING' || get().status === 'TRANSIT') {
+            set({ ignoreWrongDirection: false });
+            get().amendTrip({});
+            return;
+        }
+        if (get().status === 'ARRIVED') return;
         const { destination, ticketType } = get();
         let newFare = 0;
         let newDirection: Direction | null = get().direction;
@@ -396,13 +433,8 @@ export const useTripStore = create<TripState>((set, get) => ({
         if (dest) {
             const { journeyRoute } = buildRouteData(station, dest, get().isDevMode, get().line7Mode, get().transitMode);
             if (journeyRoute) {
-                const nextSnapshot = reduceJourneySnapshot(get().journeySnapshot, {
-                    type: 'SYNC_ROUTE',
-                    route: journeyRoute,
-                    anchorStationId: station.id,
-                    preserveDeparture: true,
-                });
-                set(getJourneySyncPatch(nextSnapshot, get()));
+                const nextSnapshot = createJourneyPreviewSnapshot(journeyRoute);
+                set({ ...getJourneySyncPatch(nextSnapshot, get()), status: 'IDLE' });
             } else {
                 set({
                     computedRoute: [],
@@ -415,13 +447,18 @@ export const useTripStore = create<TripState>((set, get) => ({
     },
 
     setDestination: (station) => {
+        if (get().status === 'ARRIVED') return;
+        if (get().status === 'WAITING' || get().status === 'TRANSIT') {
+            if (station) get().amendTrip({ destination: station });
+            return;
+        }
         const wasIdle = get().status === 'IDLE';
         set({ destination: station });
         const origin = get().origin;
         if (origin && station) {
             const { journeyRoute, stationRoute } = buildRouteData(origin, station, get().isDevMode, get().line7Mode, get().transitMode);
             if (journeyRoute) {
-                const nextSnapshot = reduceJourneySnapshot(get().journeySnapshot, {
+                const nextSnapshot = wasIdle ? createJourneyPreviewSnapshot(journeyRoute) : reduceJourneySnapshot(get().journeySnapshot, {
                     type: 'SYNC_ROUTE',
                     route: journeyRoute,
                     anchorStationId: origin.id,
@@ -443,6 +480,7 @@ export const useTripStore = create<TripState>((set, get) => ({
     },
 
     setCurrentStation: (station) => {
+        if (get().status === 'ARRIVED') return;
         if (!station) {
             if (!get().journeySnapshot.route) {
                 set({ currentStation: null, nextStation: null });
@@ -451,6 +489,7 @@ export const useTripStore = create<TripState>((set, get) => ({
         }
 
         const state = get();
+        if ((state.status === 'WAITING' || state.status === 'TRANSIT') && !(state.isDevMode && state.isGpsOverride)) return;
         const nextSnapshot = reduceJourneySnapshot(state.journeySnapshot, {
             type: 'SNAP_TO_STATION',
             stationId: station.id,
@@ -468,9 +507,16 @@ export const useTripStore = create<TripState>((set, get) => ({
         });
     },
 
-    setNextStation: (station) => set({ nextStation: station }),
+    setNextStation: (station) => {
+        if (!get().journeySnapshot.route) set({ nextStation: station });
+    },
 
     setTicketType: (type) => {
+        if (get().status === 'ARRIVED' || get().pendingCompletedTrip) return;
+        if (get().status === 'WAITING' || get().status === 'TRANSIT') {
+            get().amendTrip({ ticketType: type });
+            return;
+        }
         const { origin, currentStation } = get();
         let newFare = 0;
         if (origin && currentStation) {
@@ -479,18 +525,60 @@ export const useTripStore = create<TripState>((set, get) => ({
         set({ ticketType: type, runningFare: newFare });
     },
 
-    startTrip: () => {
+    startTrip: () => get().beginTrip(),
+    beginTrip: () => {
+        if (get().pendingCompletedTrip || get().pendingTripRecovery) return;
+        if (get().status !== 'IDLE') return;
 
         // Build computed route on trip start
         const { origin, destination } = get();
         const { journeyRoute } = buildRouteData(origin, destination, get().isDevMode, get().line7Mode, get().transitMode);
+        if (!journeyRoute || journeyRoute.edges.length === 0) return;
         const journeySnapshot = createJourneySnapshot(journeyRoute);
         set({
             ...getJourneySyncPatch(journeySnapshot, get()),
             status: 'WAITING',
             ignoreWrongDirection: false,
-            tripStartedAt: Date.now(),
+            tripStartedAt: journeySnapshot.startedAt,
+            tripOwnerId: get().authenticatedUserId,
         });
+    },
+    amendTrip: (changes) => {
+        const state = get();
+        if (state.status !== 'WAITING' && state.status !== 'TRANSIT') return;
+        const destination = changes.destination ?? state.destination;
+        const ticketType = changes.ticketType ?? state.ticketType;
+        const snapshot = state.journeySnapshot;
+        if (!snapshot.route || !destination || !state.currentStation) return;
+        let nextSnapshot = snapshot;
+        if (destination.id !== state.destination?.id || Object.keys(changes).length === 0) {
+            const keepActiveEdge = snapshot.legProgress > 0 || snapshot.statusCode !== 'AT_STATION';
+            const anchorIndex = Math.min(snapshot.activeEdgeIndex + (keepActiveEdge ? 1 : 0), snapshot.route.stationIds.length - 1);
+            const anchor = getJourneyStationById(snapshot.route.stationIds[anchorIndex]);
+            if (!anchor) return;
+            const suffix = buildRouteData(anchor, destination, state.isDevMode, state.line7Mode, state.transitMode).journeyRoute;
+            if (!suffix) return;
+            const edges = [...snapshot.route.edges.slice(0, anchorIndex), ...suffix.edges];
+            const route: JourneyRoute = {
+                ...suffix,
+                originId: snapshot.route.originId,
+                stationIds: [...snapshot.route.stationIds.slice(0, anchorIndex), ...suffix.stationIds],
+                edges,
+                totalDistanceMeters: edges.reduce((sum, edge) => sum + edge.distanceMeters, 0),
+                totalTransferCount: edges.filter((edge) => edge.type === 'transfer').length,
+            };
+            nextSnapshot = amendJourneySnapshot(snapshot, route);
+        }
+        set({
+            ...getJourneySyncPatch(nextSnapshot, { ...state, ticketType }),
+            destination,
+            ticketType,
+        });
+    },
+    confirmTransfer: (edgeId) => {
+        const current = get().journeySnapshot;
+        const next = reduceJourneySnapshot(current, { type: 'CONFIRM_TRANSFER', edgeId, timestamp: Date.now() });
+        if (next !== current) set(getJourneySyncPatch(next, get()));
     },
 
     endTrip: () => set({ status: 'ARRIVED' }),
@@ -499,6 +587,7 @@ export const useTripStore = create<TripState>((set, get) => ({
 
     // Pure label setter — NO side effects, NO nextStation recalculation
     setDirection: (dir) => {
+        if (get().status === 'WAITING' || get().status === 'TRANSIT') return;
         const normalized = normalizeDirection(dir, get().currentStation?.lineId ?? get().origin?.lineId ?? null);
         if (get().direction === normalized) return;
         set({ direction: normalized });
@@ -506,7 +595,12 @@ export const useTripStore = create<TripState>((set, get) => ({
 
     // Rebuild computedRoute (call when origin/destination changes mid-trip)
     recomputeRoute: () => {
-        const { origin, destination, currentStation, isDevMode, line7Mode, transitMode } = get();
+        if (get().status === 'ARRIVED') return;
+        if (get().status === 'WAITING' || get().status === 'TRANSIT') {
+            get().amendTrip({});
+            return;
+        }
+        const { origin, destination, isDevMode, line7Mode, transitMode } = get();
         if (!origin || !destination) {
             set({
                 computedRoute: [],
@@ -525,17 +619,13 @@ export const useTripStore = create<TripState>((set, get) => ({
             return;
         }
 
-        const nextSnapshot = reduceJourneySnapshot(get().journeySnapshot, {
-            type: 'SYNC_ROUTE',
-            route: journeyRoute,
-            anchorStationId: currentStation?.id ?? origin.id,
-            preserveDeparture: true,
-        });
-        set(getJourneySyncPatch(nextSnapshot, get()));
+        const nextSnapshot = createJourneyPreviewSnapshot(journeyRoute);
+        set({ ...getJourneySyncPatch(nextSnapshot, get()), status: 'IDLE' });
     },
 
     // THE single atomic mutation for station advancement
     advanceToStation: (stationId) => {
+        if (!(get().isDevMode && get().isGpsOverride)) return;
         const nextSnapshot = reduceJourneySnapshot(get().journeySnapshot, {
             type: 'SNAP_TO_STATION',
             stationId,
@@ -589,7 +679,9 @@ export const useTripStore = create<TripState>((set, get) => ({
     discardPendingTrip: () => set({ pendingTripRecovery: null }),
 
     setWalkingDistance: (dist) => set({ walkingDistance: dist }),
-    reset: () => set({
+    reset: () => set((state) => state.pendingCompletedTrip || state.pendingTripRecovery ? state : {
+        historySaveState: 'idle',
+        historySaveError: null,
         transitMode: 'train',
         selectedLine: null,
         origin: null,
@@ -604,8 +696,10 @@ export const useTripStore = create<TripState>((set, get) => ({
         runningFare: 0,
         direction: null,
         tripStartedAt: null,
+        tripOwnerId: null,
         isGpsOverride: false,
         simulatedLocation: null,
+        simulatedTimestamp: null,
         fallbackLocation: null,
         fallbackHeading: null,
         fallbackSpeed: null,
@@ -619,7 +713,7 @@ export const useTripStore = create<TripState>((set, get) => ({
     }),
 
     setGpsOverride: (val) => set({ isGpsOverride: val }),
-    setSimulatedLocation: (loc) => set({ simulatedLocation: loc }),
+    setSimulatedLocation: (loc) => set({ simulatedLocation: loc, simulatedTimestamp: loc ? Date.now() : null }),
     setSimulatedHeading: (h) => set({ simulatedHeading: h }),
     setSimulatedSpeed: (s) => set({ simulatedSpeed: s }),
     setFallbackLocation: (loc) => set({ fallbackLocation: loc }),

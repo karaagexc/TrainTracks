@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { getCachedStationIcon } from './mapIconCache';
 import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css'; // Import Leaflet CSS
 import { Line7Mode, LineId, OperationalMode, Station, TransitMode } from '@/types';
@@ -130,7 +131,12 @@ function MapController({ center, zoom }: { center: [number, number], zoom: numbe
         isInteractingRef.current = true;
         setIsInteracting(true);
         if (snapBackTimerRef.current) window.clearTimeout(snapBackTimerRef.current);
-    }, []);
+        if (cameraFrameRef.current !== null) {
+            window.cancelAnimationFrame(cameraFrameRef.current);
+            cameraFrameRef.current = null;
+        }
+        map.stop();
+    }, [map]);
 
     const startSnapBackTimer = useCallback(() => {
         if (!isInteractingRef.current) return;
@@ -140,6 +146,34 @@ function MapController({ center, zoom }: { center: [number, number], zoom: numbe
             setIsInteracting(false);
         }, 10000);
     }, []);
+
+    useEffect(() => {
+        const container = map.getContainer();
+        const onZoomIntent = () => {
+            beginInteraction();
+            // A canceled pinch or zoom-limit gesture may never emit Leaflet zoomend.
+            startSnapBackTimer();
+        };
+        const onTouch = (event: TouchEvent) => { if (event.touches.length > 1) onZoomIntent(); };
+        const onKeyDown = (event: KeyboardEvent) => { if (['+', '=', '-', '_'].includes(event.key)) onZoomIntent(); };
+        // Leaflet zoomstart has no originalEvent, so preserve native gesture intent separately.
+        container.addEventListener('wheel', onZoomIntent, { capture: true, passive: true });
+        container.addEventListener('dblclick', onZoomIntent, true);
+        container.addEventListener('touchstart', onTouch, { capture: true, passive: true });
+        container.addEventListener('touchmove', onTouch, { capture: true, passive: true });
+        container.addEventListener('touchend', startSnapBackTimer, { capture: true, passive: true });
+        container.addEventListener('touchcancel', startSnapBackTimer, { capture: true, passive: true });
+        container.addEventListener('keydown', onKeyDown, true);
+        return () => {
+            container.removeEventListener('wheel', onZoomIntent, true);
+            container.removeEventListener('dblclick', onZoomIntent, true);
+            container.removeEventListener('touchstart', onTouch, true);
+            container.removeEventListener('touchmove', onTouch, true);
+            container.removeEventListener('touchend', startSnapBackTimer, true);
+            container.removeEventListener('touchcancel', startSnapBackTimer, true);
+            container.removeEventListener('keydown', onKeyDown, true);
+        };
+    }, [map, beginInteraction, startSnapBackTimer]);
 
     useMapEvents({
         dragstart: beginInteraction,
@@ -159,6 +193,7 @@ function MapController({ center, zoom }: { center: [number, number], zoom: numbe
 
         cameraFrameRef.current = window.requestAnimationFrame(() => {
             cameraFrameRef.current = null;
+            if (isInteractingRef.current) return;
             const offsetYPx = 150;
             const targetPoint = map.project(center, zoom);
             const targetCenter = map.unproject(targetPoint.add([0, offsetYPx]), zoom);
@@ -606,7 +641,7 @@ function MapExplorer({ className }: { className?: string }) {
                 <div style="width: 100%; height: 100%; border-radius: 50%; ${iconBgStyle}"></div>
             `;
 
-            return LeafletData.divIcon({
+            return getCachedStationIcon(LeafletData, id, {
                 className: 'custom-station-pill',
                 html: `
                     <div style="position: relative; display: inline-flex; align-items: center; justify-content: center; width: max-content; transform: translateX(-50%); ${cabinFont}">
@@ -686,7 +721,7 @@ function MapExplorer({ className }: { className?: string }) {
                     </div>
                 `;
 
-                return LeafletData.divIcon({
+                return getCachedStationIcon(LeafletData, id, {
                     className: 'custom-station-icon dwelling',
                     html: `
                         ${iconHtml}
@@ -724,7 +759,7 @@ function MapExplorer({ className }: { className?: string }) {
                 </div>
             `;
 
-            return LeafletData.divIcon({
+            return getCachedStationIcon(LeafletData, id, {
                 className: 'custom-station-icon',
                 html: `
                     ${iconHtml}
@@ -751,6 +786,18 @@ function MapExplorer({ className }: { className?: string }) {
     );
     const storeDwellingTrainsByStation = useTrainStore((s) => s.stationDwellTrainsByStation);
     const dwellingTrainsByStation = transitMode === 'bus' ? EMPTY_DWELLING_MAP : storeDwellingTrainsByStation;
+    const stationPositions = useMemo(() => new Map(filteredStations.map(station => (
+        [station.id, [station.latitude, station.longitude] as [number, number]]
+    ))), [filteredStations]);
+    const stationHandlers = useMemo(() => new Map(filteredStations.map(station => [station.id, {
+        click: () => {
+            setSelectedStation(prev => prev?.id === station.id ? null : station);
+            const trainStore = useTrainStore.getState();
+            if (transitMode === 'train' && trainStore.spectatorMode) {
+                trainStore.selectStation(selectedStation?.id === station.id ? null : station.id);
+            }
+        },
+    }])), [filteredStations, transitMode, selectedStation, setSelectedStation]);
 
     const stationMarkers = useMemo(() => filteredStations.map((station) => {
         const dwellingTrains = dwellingTrainsByStation.get(station.id) ?? EMPTY_DWELLING_TRAINS;
@@ -758,7 +805,7 @@ function MapExplorer({ className }: { className?: string }) {
         return (
             <Marker
                 key={station.id}
-                position={[station.latitude, station.longitude]}
+                position={stationPositions.get(station.id)!}
                 icon={createStationIcon(
                     station,
                     selectedStation?.id === station.id,
@@ -768,22 +815,11 @@ function MapExplorer({ className }: { className?: string }) {
                     expandingId === station.id,
                     dwellingTrains
                 )}
-                eventHandlers={{
-                    click: () => {
-                        // Toggle Logic
-                        setSelectedStation(prev => prev?.id === station.id ? null : station);
-                        // In Spectator Mode: also notify train store for SpectatorInfoCard
-                        const trainStore = useTrainStore.getState();
-                        if (transitMode === 'train' && trainStore.spectatorMode) {
-                            const isDeselecting = selectedStation?.id === station.id;
-                            trainStore.selectStation(isDeselecting ? null : station.id);
-                        }
-                    },
-                }}
+                eventHandlers={stationHandlers.get(station.id)}
             >
             </Marker>
         );
-    }), [filteredStations, selectedStation?.id, collapsingId, expandingId, dwellingTrainsByStation, createStationIcon, shouldShowPill, transitMode, setSelectedStation]);
+    }), [filteredStations, selectedStation?.id, collapsingId, expandingId, dwellingTrainsByStation, createStationIcon, shouldShowPill, stationPositions, stationHandlers]);
 
     // Don't render map until Leaflet is ready (prevents SSR/window issues)
     if (!LeafletData) return <div className="w-full h-full bg-zinc-900 animate-pulse" />;
@@ -804,7 +840,7 @@ function MapExplorer({ className }: { className?: string }) {
                 scrollWheelZoom={true}
                 style={{ height: "100%", width: "100%", zIndex: 0 }}
                 zoomControl={false}
-                attributionControl={true}
+                attributionControl={false}
             >
                 <style>{STATION_MARKER_ANIMATION_STYLES}</style>
 
@@ -852,6 +888,9 @@ function MapExplorer({ className }: { className?: string }) {
                 {/* Live Train Markers */}
                 {transitMode === 'train' && <LiveTrainLayer />}
             </MapContainer>
+            <div className="tt-map-attribution" aria-label="Map attribution">
+                &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>, &copy; <a href="https://carto.com/attribution/" target="_blank" rel="noopener noreferrer">CARTO</a>
+            </div>
         </div>
     );
 }

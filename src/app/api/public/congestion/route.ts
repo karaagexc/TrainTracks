@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPredictionApiAccess } from '@/domain/predictions/apiAccess';
-import { getPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
+import { getPublicApiHeaders, getConfiguredPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
 import { getCongestionLevel } from '@/data/congestion';
 import { STATION_WEIGHTS } from '@/data/congestion';
 
@@ -11,7 +11,7 @@ const VALID_STATION_IDS = new Set(Object.keys(STATION_WEIGHTS));
 export async function OPTIONS(request: NextRequest) {
     return new Response(null, {
         status: 204,
-        headers: getPublicApiHeaders(request),
+        headers: await getConfiguredPublicApiHeaders(request),
     });
 }
 

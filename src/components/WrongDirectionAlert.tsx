@@ -15,7 +15,6 @@ export function WrongDirectionAlert({ onUpdateOrigin, onChangeDestination }: Wro
         riskLevel,
         estimatedPenalty,
         reasons,
-        nearestStationName,
         dismiss
     } = useWrongDirection();
 
@@ -107,7 +106,7 @@ export function WrongDirectionAlert({ onUpdateOrigin, onChangeDestination }: Wro
                         >
                             <MapPin className="w-4 h-4" />
                             <span className="text-sm">
-                                {nearestStationName ? `Fix my trip - I'm at ${nearestStationName}` : 'Fix my trip'}
+                                Reroute remaining trip
                             </span>
                         </button>
 

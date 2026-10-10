@@ -1,144 +1,82 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import { useTripStore } from "@/store/useTripStore";
-import { createClient } from "@/lib/supabase/client";
-import { normalizeCongestionConfig, type CongestionConfig } from "@/domain/congestion/engine";
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTripStore } from '@/store/useTripStore';
+import { createClient } from '@/lib/supabase/client';
+import { readAppConfig, parseAppConfig, type ConfigLoadResult, type AppConfig } from '@/domain/config';
+import type { CongestionConfig } from '@/domain/congestion/engine';
 
-/**
- * useMaintenanceMode
- * 
- * Polls the `app_config` table in Supabase once per minute while visible to check
- * if maintenance_mode is enabled. Syncs the result into Zustand so
- * the entire app reacts immediately.
- * 
- * DevOpts toggle writes BACK to Supabase so ALL clients see the change.
- */
 export function useMaintenanceMode() {
-    const maintenanceMode = useTripStore((state) => state.maintenanceMode);
-    const setMaintenanceMode = useTripStore((state) => state.setMaintenanceMode);
-    const congestionConfig = useTripStore((state) => state.congestionConfig);
-    const setCongestionConfig = useTripStore((state) => state.setCongestionConfig);
-    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const maintenanceModeRef = useRef(maintenanceMode);
-    const congestionConfigRef = useRef(JSON.stringify(congestionConfig));
+    const storedMaintenanceMode = useTripStore(state => state.maintenanceMode);
+    const isActiveTrip = useTripStore(state => state.status !== 'IDLE');
+    const congestionConfig = useTripStore(state => state.congestionConfig);
+    const [result, setResult] = useState<ConfigLoadResult | null>(null);
+    const inFlight = useRef(false);
+    const mounted = useRef(false);
 
-    useEffect(() => {
-        maintenanceModeRef.current = maintenanceMode;
-        congestionConfigRef.current = JSON.stringify(congestionConfig);
-    }, [maintenanceMode, congestionConfig]);
-
-    const fetchFlag = useCallback(async () => {
+    const refreshConfig = useCallback(async () => {
+        if (inFlight.current) return;
+        inFlight.current = true;
         try {
-            const supabase = createClient();
-            const { data, error } = await supabase
-                .from("app_config")
-                .select("maintenance_mode, maintenance_message, congestion_config")
-                .eq("id", 1)
-                .single();
-
-            if (error) {
-                console.warn("[Maintenance] Failed to fetch config:", error.message);
-                return;
+            const next = await readAppConfig(createClient());
+            if (!mounted.current) return;
+            setResult(next);
+            if (next.config) {
+                const store = useTripStore.getState();
+                store.setMaintenanceMode(next.config.maintenance_mode);
+                if (next.status === 'ready') store.setCongestionConfig(next.config.congestion_config);
             }
-
-            if (data && data.maintenance_mode !== maintenanceModeRef.current) {
-                maintenanceModeRef.current = data.maintenance_mode;
-                setMaintenanceMode(data.maintenance_mode);
-            }
-
-            if (data) {
-                const nextCongestionConfig = normalizeCongestionConfig(data.congestion_config as CongestionConfig | null);
-                const serialized = JSON.stringify(nextCongestionConfig);
-                if (serialized !== congestionConfigRef.current) {
-                    congestionConfigRef.current = serialized;
-                    setCongestionConfig(nextCongestionConfig);
-                }
-            }
-        } catch (err) {
-            console.warn("[Maintenance] Network error:", err);
-        }
-    }, [setCongestionConfig, setMaintenanceMode]);
+        } finally { inFlight.current = false; }
+    }, []);
 
     useEffect(() => {
-        const pollWhileVisible = () => {
-            if (typeof document === 'undefined' || !document.hidden) {
-                void fetchFlag();
-            }
-        };
-        const handleVisibilityChange = () => {
-            if (!document.hidden) pollWhileVisible();
-        };
-
-        pollWhileVisible();
-        intervalRef.current = setInterval(pollWhileVisible, 60_000);
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-
+        mounted.current = true;
+        const poll = () => { if (!document.hidden) void refreshConfig(); };
+        poll();
+        const interval = setInterval(poll, 60000);
+        document.addEventListener('visibilitychange', poll);
+        window.addEventListener('online', poll);
         return () => {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            mounted.current = false;
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', poll);
+            window.removeEventListener('online', poll);
         };
-    }, [fetchFlag]);
+    }, [refreshConfig]);
 
-    return { maintenanceMode, congestionConfig };
+    return {
+        // Existing consumers receive a gate that never removes an active passenger's controls.
+        maintenanceMode: !isActiveTrip && storedMaintenanceMode,
+        remoteMaintenanceMode: result?.config?.maintenance_mode ?? null,
+        maintenanceMessage: result?.config?.maintenance_message ?? null,
+        congestionConfig, configStatus: result?.status ?? 'loading', configError: result?.error ?? null,
+        refreshConfig,
+    };
 }
 
-/**
- * Toggle maintenance mode in Supabase.
- * Called from CommandCenter DevOpts.
- */
-export async function setRemoteMaintenanceMode(enabled: boolean): Promise<boolean> {
+async function updateRemoteConfig(payload: Record<string, unknown>): Promise<AppConfig | null> {
     try {
-        const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-            console.error("[Maintenance] Update denied: no authenticated session");
-            return false;
-        }
-
-        const { error } = await supabase
-            .from("app_config")
-            .update({ maintenance_mode: enabled, updated_at: new Date().toISOString() })
-            .eq("id", 1);
-
-        if (error) {
-            console.error("[Maintenance] Failed to update:", error.message);
-            return false;
-        }
-
-        // Also update local Zustand immediately
-        useTripStore.getState().setMaintenanceMode(enabled);
-        return true;
-    } catch (err) {
-        console.error("[Maintenance] Network error:", err);
-        return false;
+        const response = await fetch('/api/admin/config', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload), cache: 'no-store',
+        });
+        const body = await response.json();
+        const result = parseAppConfig(body.config);
+        if (!response.ok || body.ok !== true || result.status !== 'ready' || !result.config) return null;
+        const store = useTripStore.getState();
+        store.setMaintenanceMode(result.config.maintenance_mode);
+        store.setCongestionConfig(result.config.congestion_config);
+        return result.config;
+    } catch (error) {
+        console.error('[Config] Update failed:', error);
+        return null;
     }
+}
+
+export async function setRemoteMaintenanceMode(enabled: boolean): Promise<boolean> {
+    return (await updateRemoteConfig({ maintenanceMode: enabled }))?.maintenance_mode === enabled;
 }
 
 export async function setRemoteCongestionConfig(config: CongestionConfig): Promise<boolean> {
-    try {
-        const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-            console.error("[Maintenance] Congestion config update denied: no authenticated session");
-            return false;
-        }
-
-        const normalizedConfig = normalizeCongestionConfig(config);
-        const { error } = await supabase
-            .from("app_config")
-            .update({ congestion_config: normalizedConfig, updated_at: new Date().toISOString() })
-            .eq("id", 1);
-
-        if (error) {
-            console.error("[Maintenance] Failed to update congestion config:", error.message);
-            return false;
-        }
-
-        useTripStore.getState().setCongestionConfig(normalizedConfig);
-        return true;
-    } catch (err) {
-        console.error("[Maintenance] Congestion config network error:", err);
-        return false;
-    }
+    return !!await updateRemoteConfig({ congestionConfig: config });
 }

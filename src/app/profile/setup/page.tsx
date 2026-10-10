@@ -16,7 +16,11 @@ export default function ProfileSetupPage() {
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
+    const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'error'>('idle');
+
+    useEffect(() => {
+        if (!loading && !user) router.replace('/login?next=%2Fprofile%2Fsetup');
+    }, [loading, user, router]);
 
     // Pre-fill from auth provider (Google name, avatar)
     useEffect(() => {
@@ -43,14 +47,18 @@ export default function ProfileSetupPage() {
         }
 
         setUsernameStatus('checking');
+        let cancelled = false;
         const timer = setTimeout(async () => {
+            try {
             const { createClient } = await import('@/lib/supabase/client');
             const supabase = createClient();
-            const { data } = await supabase
+            const { data, error: checkError } = await supabase
                 .from('profiles')
                 .select('id')
                 .eq('username', username.toLowerCase())
                 .maybeSingle();
+            if (cancelled) return;
+            if (checkError) { setUsernameStatus('error'); return; }
 
             // If data exists and it's not our own profile
             if (data && data.id !== user?.id) {
@@ -58,14 +66,21 @@ export default function ProfileSetupPage() {
             } else {
                 setUsernameStatus('available');
             }
+            } catch {
+                if (!cancelled) setUsernameStatus('error');
+            }
         }, 500);
 
-        return () => clearTimeout(timer);
+        return () => { cancelled = true; clearTimeout(timer); };
     }, [username, user?.id]);
 
     const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            setError('Use a JPEG, PNG, or WebP image');
+            return;
+        }
 
         // Validate size (max 2MB)
         if (file.size > 2 * 1024 * 1024) {
@@ -81,7 +96,8 @@ export default function ProfileSetupPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!username || username.length < 3) {
+        if (!user) { setError('Sign in before saving your profile.'); return; }
+        if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
             setError('Username must be at least 3 characters');
             return;
         }
@@ -118,13 +134,13 @@ export default function ProfileSetupPage() {
 
             // Success — redirect to main app
             router.push('/');
-        } catch (err) {
+        } catch {
             setError('Something went wrong. Please try again.');
             setSaving(false);
         }
     };
 
-    if (loading) {
+    if (loading || !user) {
         return (
             <div className="min-h-[100dvh] bg-black flex items-center justify-center">
                 <Loader2 className="w-8 h-8 text-zinc-500 animate-spin" />
@@ -178,7 +194,7 @@ export default function ProfileSetupPage() {
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept="image/*"
+                                accept="image/jpeg,image/png,image/webp"
                             onChange={handleAvatarChange}
                             className="hidden"
                         />
@@ -212,7 +228,7 @@ export default function ProfileSetupPage() {
                             )}
                         </div>
                         <p className="text-xs text-zinc-600">
-                            {usernameStatus === 'taken'
+                            {usernameStatus === 'error' ? 'Availability check failed. Saving will validate the username.' : usernameStatus === 'taken'
                                 ? 'This username is taken'
                                 : usernameStatus === 'available'
                                     ? 'Username is available!'

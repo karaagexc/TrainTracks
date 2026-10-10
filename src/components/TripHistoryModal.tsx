@@ -13,6 +13,8 @@ interface TripHistoryModalProps {
     stats: TripStats;
     loading: boolean;
     onLoad: () => void;
+    error?: string | null;
+    totalsAvailable?: boolean;
 }
 
 function getLineAccent(lineId: string): string {
@@ -78,7 +80,7 @@ function groupByDate(trips: TripRecord[]): { date: string; trips: TripRecord[] }
     return Array.from(groups.entries()).map(([date, trips]) => ({ date, trips }));
 }
 
-export default function TripHistoryModal({ isOpen, onClose, trips, stats, loading, onLoad }: TripHistoryModalProps) {
+export default function TripHistoryModal({ isOpen, onClose, trips, stats, loading, onLoad, error = null, totalsAvailable = false }: TripHistoryModalProps) {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [fadeIn, setFadeIn] = useState(false);
 
@@ -123,12 +125,13 @@ export default function TripHistoryModal({ isOpen, onClose, trips, stats, loadin
                         <div>
                             <h2 className="text-lg font-black text-white">Trip History</h2>
                             <p className="text-[10px] text-white/30 font-medium">
-                                {stats.totalTrips} trip{stats.totalTrips !== 1 ? 's' : ''} recorded
+                                {error ? 'History unavailable - showing loaded trips' : totalsAvailable ? `${stats.totalTrips} trips recorded` : `${trips.length} trips shown`}
                             </p>
                         </div>
                     </div>
                     <button
                         onClick={handleClose}
+                        aria-label="Close trip history"
                         className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
                     >
                         <X className="w-5 h-5 text-white/50" />
@@ -136,7 +139,7 @@ export default function TripHistoryModal({ isOpen, onClose, trips, stats, loadin
                 </div>
 
                 {/* Stats Banner */}
-                {stats.totalTrips > 0 && (
+                {totalsAvailable && stats.totalTrips > 0 && (
                     <div className="shrink-0 grid grid-cols-3 gap-2 px-5 py-4 border-b border-white/[0.04]">
                         <div className="bg-white/[0.03] border border-white/[0.05] rounded-xl p-3 text-center">
                             <Coins className="w-3.5 h-3.5 text-emerald-400 mx-auto mb-1" />
@@ -169,8 +172,8 @@ export default function TripHistoryModal({ isOpen, onClose, trips, stats, loadin
                                 <TrainFront className="w-7 h-7 text-white/15" />
                             </div>
                             <div className="text-center">
-                                <p className="text-sm font-bold text-white/40">No trips yet</p>
-                                <p className="text-xs text-white/20 mt-1">Complete your first ride to start tracking!</p>
+                                <p className="text-sm font-bold text-white/40" role="status">{error ? 'Trip history unavailable' : 'No trips yet'}</p>
+                                <p className="text-xs text-white/20 mt-1">{error ? error : 'Complete your first ride to start tracking!'}</p>
                             </div>
                         </div>
                     ) : (

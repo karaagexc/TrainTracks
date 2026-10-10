@@ -1,5 +1,6 @@
-import { getPredictionResponse, type PredictionResponse } from '@/domain/predictions/engine';
+import type { PredictionResponse } from '@/domain/predictions/engine';
 import { parsePredictionRequestFromUrl } from '@/domain/predictions/request';
+import { getConfiguredPredictionResponse, getServerApiConfiguration, publicApiConfigurationAccess } from './serverConfig';
 
 const STREAM_INTERVAL_MS = 3_000;
 
@@ -22,28 +23,37 @@ export function formatPredictionSseEvent(response: PredictionResponse, id = Date
     ].join('\n');
 }
 
-export function createPredictionStream(url: URL, signal?: AbortSignal): ReadableStream<Uint8Array> {
+export function createPredictionStream(url: URL, signal?: AbortSignal, options: { publicApi?: boolean } = {}): ReadableStream<Uint8Array> {
     const encoder = new TextEncoder();
-    let interval: ReturnType<typeof setInterval> | null = null;
+    let interval: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
+    let abortListener: (() => void) | null = null;
 
     const cleanup = () => {
         if (interval) {
-            clearInterval(interval);
+            clearTimeout(interval);
             interval = null;
         }
         closed = true;
+        if (abortListener) signal?.removeEventListener('abort', abortListener);
     };
 
     return new ReadableStream<Uint8Array>({
         start(controller) {
-            const emit = () => {
+            const emit = async () => {
                 if (closed) return;
-                const response = getPredictionResponse(parsePredictionRequestFromUrl(url));
                 try {
+                    if (options.publicApi && !publicApiConfigurationAccess(await getServerApiConfiguration()).ok) {
+                        close(); return;
+                    }
+                    const response = await getConfiguredPredictionResponse(parsePredictionRequestFromUrl(url));
+                    if (closed) return;
                     controller.enqueue(encoder.encode(formatPredictionSseEvent(response)));
                 } catch {
                     cleanup();
+                    try { controller.error(new Error('Prediction stream unavailable.')); } catch { /* Already closed. */ }
+                } finally {
+                    if (!closed) interval = setTimeout(() => void emit(), STREAM_INTERVAL_MS);
                 }
             };
 
@@ -56,13 +66,13 @@ export function createPredictionStream(url: URL, signal?: AbortSignal): Readable
                 }
             };
 
-            emit();
-            interval = setInterval(emit, STREAM_INTERVAL_MS);
+            void emit();
 
             if (signal) {
                 if (signal.aborted) {
                     close();
                 } else {
+                    abortListener = close;
                     signal.addEventListener('abort', close, { once: true });
                 }
             }

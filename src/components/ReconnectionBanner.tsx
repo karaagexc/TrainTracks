@@ -15,20 +15,21 @@ export function ReconnectionBanner() {
 }
 
 function ActiveReconnectionBanner() {
+    const lastTrustedFixAt = useTripStore((state) => state.journeySnapshot.lastTrustedFixAt);
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
     const [visible, setVisible] = useState(false);
 
     useEffect(() => {
         const showTimer = setTimeout(() => setVisible(true), 300);
         const counter = setInterval(() => {
-            setElapsedSeconds(prev => prev + 1);
+            setElapsedSeconds(lastTrustedFixAt == null ? 0 : Math.max(0, Math.floor((Date.now() - lastTrustedFixAt) / 1000)));
         }, 1000);
 
         return () => {
             clearTimeout(showTimer);
             clearInterval(counter);
         };
-    }, []);
+    }, [lastTrustedFixAt]);
 
     if (!visible) return null;
 
@@ -55,10 +56,10 @@ function ActiveReconnectionBanner() {
                     {/* Text */}
                     <div className="flex-1 min-w-0">
                         <p className="text-amber-100 text-sm font-semibold tracking-tight">
-                            Trying to reconnect...
+                            Reconnecting GPS...
                         </p>
                         <p className="text-amber-400/70 text-xs">
-                            Signal lost {formatTime(elapsedSeconds)} ago
+                            {lastTrustedFixAt == null ? 'Waiting for a trusted GPS fix' : `Last trusted GPS fix ${formatTime(elapsedSeconds)} ago`}
                         </p>
                     </div>
 

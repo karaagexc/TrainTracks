@@ -147,7 +147,7 @@ function handlePosition(pos: GeolocationPosition) {
         || speedChanged
         || accuracyChanged
         || headingChanged
-        || timestamp - lastListenerPublishAt >= 5000
+        || timestamp - lastListenerPublishAt >= (needsActiveGpsWatch() ? 1000 : 5000)
         || sharedLocationState.gpsError !== null;
 
     lastPositionSample = decision.fix;
@@ -442,12 +442,17 @@ function requestSharedLocation() {
 export function useSmartLocation() {
     const isGpsOverride = useTripStore((state) => state.isGpsOverride);
     const simulatedLocation = useTripStore((state) => state.simulatedLocation);
+    const simulatedTimestamp = useTripStore((state) => state.simulatedTimestamp);
     const simulatedHeading = useTripStore((state) => state.simulatedHeading);
     const simulatedSpeed = useTripStore((state) => state.simulatedSpeed);
     const isFallbackLocationActive = useTripStore((state) => state.isFallbackLocationActive);
     const fallbackLocation = useTripStore((state) => state.fallbackLocation);
     const fallbackHeading = useTripStore((state) => state.fallbackHeading);
     const fallbackSpeed = useTripStore((state) => state.fallbackSpeed);
+    const estimatedAt = useTripStore((state) => state.journeySnapshot.lastEstimatorUpdateAt);
+    const lastTrustedFixAt = useTripStore((state) => state.journeySnapshot.lastTrustedFixAt);
+    const uncertaintyMeters = useTripStore((state) => state.journeySnapshot.uncertaintyMeters);
+    const estimationConfidence = useTripStore((state) => state.journeySnapshot.estimatorConfidence);
     const currentStation = useTripStore((state) => state.currentStation);
     const setLocationRuntime = useLocationStore((state) => state.setLocationRuntime);
 
@@ -478,8 +483,9 @@ export function useSmartLocation() {
         errorCode: snapshot.gpsErrorCode,
     }), [snapshot]);
 
-    const locationOverride = useMemo<LocationOverrideState | null>(() => {
-        if (isGpsOverride && simulatedLocation) {
+    // Estimator output must not recreate simulation fixes as fresh sensor input.
+    const simulationOverride = useMemo<LocationOverrideState | null>(() => {
+        if (isGpsOverride && simulatedLocation && simulatedTimestamp !== null) {
             return {
                 active: true,
                 source: 'simulation',
@@ -487,17 +493,27 @@ export function useSmartLocation() {
                 rawHeading: simulatedHeading,
                 speedKph: simulatedSpeed,
                 accuracyMeters: 5,
+                timestamp: simulatedTimestamp,
+                lastTrustedFixAt: simulatedTimestamp,
             };
         }
 
-        if (isFallbackLocationActive && fallbackLocation) {
+        return null;
+    }, [isGpsOverride, simulatedLocation, simulatedTimestamp, simulatedHeading, simulatedSpeed]);
+
+    const fallbackOverride = useMemo<LocationOverrideState | null>(() => {
+        if (!isGpsOverride && isFallbackLocationActive && fallbackLocation) {
             return {
                 active: true,
                 source: 'fallback',
                 location: fallbackLocation,
                 rawHeading: fallbackHeading,
                 speedKph: fallbackSpeed,
-                accuracyMeters: 25,
+                accuracyMeters: uncertaintyMeters,
+                timestamp: estimatedAt,
+                lastTrustedFixAt,
+                uncertaintyMeters,
+                confidence: estimationConfidence.toLowerCase() as 'high' | 'medium' | 'low',
             };
         }
 
@@ -506,12 +522,14 @@ export function useSmartLocation() {
         fallbackHeading,
         fallbackLocation,
         fallbackSpeed,
+        estimatedAt,
+        lastTrustedFixAt,
+        uncertaintyMeters,
+        estimationConfidence,
         isFallbackLocationActive,
         isGpsOverride,
-        simulatedHeading,
-        simulatedLocation,
-        simulatedSpeed,
     ]);
+    const locationOverride = simulationOverride ?? fallbackOverride;
 
     const locationStatus = useMemo(
         () => diagnoseLocationStatus(rawLocationState, locationOverride),

@@ -25,12 +25,18 @@ export interface EffectiveFare {
     baseAmount: number;
     paymentMedium: FarePaymentMedium;
     policy: FarePolicy | null;
+    verification: 'verified' | 'unverified';
+    verificationNote: string | null;
 }
 
+export const RAIL_FARE_VERIFICATION_GAPS = {
+    LRT1: 'Concession amounts remain legacy/unverified: LRMC confirms a 50% discounted SJT but no retrieved primary matrix establishes rounding or white-card amounts. Do not infer a second discount.',
+} as const;
+
 export const BASE_RAIL_FARE_SOURCE_REFS: Partial<Record<LineId, string[]>> = {
-    LRT1: ['https://lrmc.ph/2025/02/18/new-lrt-1-fares-effective-2-april-2025/'],
+    LRT1: ['https://lrmc.ph/our-business-featured/fare-matrix/'],
     LRT2: ['https://www.lrta.gov.ph/lrt-2-fare-adjustment/'],
-    MRT3: ['https://www.dotrmrt3.gov.ph/citizens-charter'],
+    MRT3: ['https://www.dotrmrt3.gov.ph/dotrmrt3-citizen-charter-handbook-2026-1st-edition.pdf#page=93'],
 };
 
 export const CURRENT_RAIL_FARE_POLICY: FarePolicy = {
@@ -41,10 +47,11 @@ export const CURRENT_RAIL_FARE_POLICY: FarePolicy = {
     effectiveFrom: '2026-03-22T16:00:00.000Z',
     effectiveUntil: null,
     status: 'active_until_further_notice',
-    lastVerifiedAt: '2026-08-10',
+    lastVerifiedAt: '2026-10-09',
     sourceRefs: [
         'https://www.lrta.gov.ph/tickets-and-fares/',
-        'https://www.pna.gov.ph/index.php/articles/1271411',
+        'https://www.lrta.gov.ph/wp-content/uploads/2026/03/Citizens-Charter-Handbook-2026-2nd-Edition.pdf#page=10',
+        'https://www.dotrmrt3.gov.ph/dotrmrt3-citizen-charter-handbook-2026-1st-edition.pdf#page=93',
     ],
 };
 
@@ -59,12 +66,18 @@ function getBaseFare(entry: BaseFareEntry, ticketType: TicketType): number {
 }
 
 function isPolicyActive(policy: FarePolicy, lineId: LineId, at: number): boolean {
+    if (!Number.isFinite(at) || policy.status === 'expired') return false;
     if (!policy.lineIds.includes(lineId)) return false;
     if (at < Date.parse(policy.effectiveFrom)) return false;
     return policy.effectiveUntil === null || at < Date.parse(policy.effectiveUntil);
 }
 
-function roundDiscountedFare(value: number, medium: FarePaymentMedium): number {
+const MRT3_RELIEF_FARE_BANDS: Readonly<Record<number, number>> = {
+    13: 6, 16: 8, 20: 10, 24: 12, 28: 14,
+};
+
+function roundLrt2DiscountedFare(value: number, medium: FarePaymentMedium): number {
+    // LRTA's distinct SJT table rounds 7.5 to 8; its SVC table retains halves.
     if (medium === 'single_journey') return Math.round(value);
     return Math.round(value * 2) / 2;
 }
@@ -82,15 +95,44 @@ export function getEffectiveFare(
 
     if (!policy) {
         const baseAmount = getBaseFare(entry, ticketType);
-        return { amount: baseAmount, baseAmount, paymentMedium, policy: null };
+        const verificationNote = lineId === 'LRT1' && ticketType === 'CONCESSION'
+            ? RAIL_FARE_VERIFICATION_GAPS.LRT1
+            : null;
+        return {
+            amount: baseAmount,
+            baseAmount,
+            // The legacy concession column was a discounted SJT, not a white-card table.
+            paymentMedium: ticketType === 'CONCESSION' && ['LRT1', 'LRT2', 'MRT3'].includes(lineId)
+                ? 'single_journey'
+                : paymentMedium,
+            policy: null,
+            verification: verificationNote ? 'unverified' : 'verified',
+            verificationNote,
+        };
     }
 
-    // The current relief applies to every rider and must not stack with white-card discounts.
+    // LRTA publishes one reduced SVC table for blue and white cards; MRT3 one
+    // all-passenger table. Use those amounts, not a discount on entry.CONCESSION.
     const baseAmount = paymentMedium === 'single_journey' ? entry.SJT : entry.BEEP;
+    const amount = lineId === 'MRT3'
+        ? MRT3_RELIEF_FARE_BANDS[baseAmount]
+        : roundLrt2DiscountedFare(baseAmount * policy.multiplier, paymentMedium);
+    if (amount === undefined) {
+        return {
+            amount: baseAmount,
+            baseAmount,
+            paymentMedium,
+            policy,
+            verification: 'unverified',
+            verificationNote: `No published MRT3 relief fare is verified for the ${baseAmount}-peso base band.`,
+        };
+    }
     return {
-        amount: roundDiscountedFare(baseAmount * policy.multiplier, paymentMedium),
+        amount,
         baseAmount,
         paymentMedium,
         policy,
+        verification: 'verified',
+        verificationNote: null,
     };
 }

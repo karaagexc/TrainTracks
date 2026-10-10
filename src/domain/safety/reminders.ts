@@ -37,7 +37,8 @@ export function getEligibleSafetyReminder({
         return 'PRE_BOARD';
     }
 
-    const elapsedMs = tripStartedAt ? now - tripStartedAt : 0;
+    const startedAt = snapshot.startedAt ?? tripStartedAt;
+    const elapsedMs = startedAt ? Math.max(0, now - startedAt) : 0;
     const departureConfirmed = snapshot.hasDepartedOrigin
         && snapshot.projectedDistanceMeters !== null
         && snapshot.projectedDistanceMeters >= 120;

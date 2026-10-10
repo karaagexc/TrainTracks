@@ -32,6 +32,23 @@ export function buildJourneyTripLogicView(
         ? transferEdge.targetCoordinates ?? (transferTo ? { latitude: transferTo.latitude, longitude: transferTo.longitude } : null)
         : null;
     const isTransferActive = Boolean(transferEdge && transferFrom && transferTo);
+    const edges = journeySnapshot.route?.edges ?? [];
+    let railStart = journeySnapshot.activeEdgeIndex;
+    let railEnd = railStart;
+    if (activeEdge?.type === 'rail') {
+        const onActiveLine = (index: number) => {
+            const edge = edges[index];
+            return edge?.type === 'rail' && edge.lineId === activeEdge.lineId;
+        };
+        while (railStart > 0 && onActiveLine(railStart - 1)) railStart -= 1;
+        while (railEnd + 1 < edges.length && onActiveLine(railEnd + 1)) railEnd += 1;
+    }
+    const railDistance = edges.slice(railStart, railEnd + 1).reduce((sum, edge) => sum + edge.distanceMeters, 0);
+    const railCovered = edges.slice(railStart, journeySnapshot.activeEdgeIndex).reduce((sum, edge) => sum + edge.distanceMeters, 0)
+        + (activeEdge?.distanceMeters ?? 0) * journeySnapshot.legProgress / 100;
+    const railLegProgress = journeySnapshot.phase === 'ARRIVED' ? 100
+        : transferEdge ? journeySnapshot.legProgress
+            : railDistance > 0 ? Math.max(0, Math.min(100, railCovered / railDistance * 100)) : 0;
 
     return {
         phase: journeySnapshot.phase,
@@ -39,6 +56,7 @@ export function buildJourneyTripLogicView(
         statusText: getJourneyStatusText(journeySnapshot),
         displayStation,
         legProgress: journeySnapshot.legProgress,
+        railLegProgress,
         totalProgress: journeySnapshot.totalProgress,
         visualPrev,
         visualNext,

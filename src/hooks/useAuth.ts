@@ -3,6 +3,8 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
+import { useTripStore } from '@/store/useTripStore';
+import { PUBLIC_PROFILE_COLUMNS, writePublicProfile } from '@/domain/auth/profile';
 
 export interface UserProfile {
     id: string;
@@ -30,7 +32,6 @@ type SafeProfileUpdate = Pick<UserProfile, 'username' | 'display_name' | 'avatar
 
 const NEW_USER_SETUP_WINDOW_MS = 48 * 60 * 60 * 1000;
 const PROFILE_UPDATED_EVENT = 'traintracks:profile-updated';
-const PUBLIC_PROFILE_COLUMNS = 'id,username,display_name,avatar_url,created_at,updated_at';
 const supabase = createClient();
 const listeners = new Set<() => void>();
 const serverSnapshot: AuthSnapshot = {
@@ -94,6 +95,7 @@ async function fetchProfile(user: User) {
         await new Promise((resolve) => setTimeout(resolve, 500));
         publicResult = await loadPublicProfile();
     }
+    if (snapshot.user?.id !== user.id) return;
 
     if (publicResult.error) {
         publish({
@@ -125,16 +127,10 @@ async function fetchProfile(user: User) {
             .eq('user_id', user.id)
             .maybeSingle(),
     ]);
+    if (snapshot.user?.id !== user.id) return;
 
     const providerHasPassword = user.app_metadata?.provider === 'email';
     const hasPassword = privateResult.data?.has_password === true || providerHasPassword;
-
-    if (providerHasPassword && privateResult.data && !privateResult.data.has_password) {
-        void supabase
-            .from('profile_private')
-            .update({ has_password: true, updated_at: new Date().toISOString() })
-            .eq('user_id', user.id);
-    }
 
     const publicProfile = publicResult.data;
     publish({
@@ -149,15 +145,16 @@ async function fetchProfile(user: User) {
             created_at: publicProfile.created_at ?? user.created_at,
             updated_at: publicProfile.updated_at ?? publicProfile.created_at ?? user.created_at,
         },
-        profileStatus: 'ready',
-        profileError: null,
+        profileStatus: privateResult.error || roleResult.error ? 'error' : 'ready',
+        profileError: privateResult.error?.message ?? roleResult.error?.message ?? null,
     });
 }
 
 async function handleAuthState(event: AuthChangeEvent, session: Session | null) {
-    const user = session?.user ?? null;
+    const sessionUser = session?.user ?? null;
 
-    if (event === 'SIGNED_OUT' || !user) {
+    if (event === 'SIGNED_OUT' || !sessionUser) {
+        useTripStore.getState().setAuthenticatedUserId(null);
         publish({
             user: null,
             profile: null,
@@ -167,6 +164,16 @@ async function handleAuthState(event: AuthChangeEvent, session: Session | null) 
         });
         return;
     }
+
+    const verified = await supabase.auth.getUser();
+    if (verified.error || !verified.data.user) {
+        useTripStore.getState().setAuthenticatedUserId(null);
+        publish({ user: null, profile: null, loading: false, profileStatus: 'error',
+            profileError: verified.error?.message ?? 'Unable to verify session.' });
+        return;
+    }
+    const user = verified.data.user as User;
+    useTripStore.getState().setAuthenticatedUserId(user.id);
 
     if (event === 'TOKEN_REFRESHED' && snapshot.user?.id === user.id) {
         publish({ user, loading: false });
@@ -213,7 +220,8 @@ function ensureInitialized() {
     authSubscription = data.subscription;
 
     void supabase.auth.getSession()
-        .then(({ data: sessionData }: { data: { session: Session | null } }) => {
+        .then(({ data: sessionData, error }: { data: { session: Session | null }; error: { message: string } | null }) => {
+            if (error) throw error;
             if (initialSessionHandled) return;
             initialSessionHandled = true;
             enqueueAuthState('INITIAL_SESSION', sessionData.session);
@@ -222,6 +230,7 @@ function ensureInitialized() {
             if (initialSessionHandled) return;
             initialSessionHandled = true;
             console.error('[Auth] Initial session failed:', error);
+            useTripStore.getState().setAuthenticatedUserId(null);
             publish({
                 loading: false,
                 profileStatus: 'error',
@@ -234,14 +243,9 @@ async function refreshProfile() {
 }
 
 async function signOut() {
-    try {
-        await Promise.race([
-            supabase.auth.signOut({ scope: 'local' }),
-            new Promise((resolve) => setTimeout(resolve, 2000)),
-        ]);
-    } catch (error) {
-        console.warn('[Auth] Sign out failed; clearing local state:', error);
-    }
+    const result = await supabase.auth.signOut({ scope: 'local' });
+    if (result.error) throw result.error;
+    useTripStore.getState().setAuthenticatedUserId(null);
 
     publish({
         user: null,
@@ -256,8 +260,15 @@ async function signOut() {
 async function updateProfile(updates: Partial<UserProfile>) {
     const user = snapshot.user;
     if (!user) return { error: 'Not authenticated' };
+    if (!Object.keys(updates).length || Object.keys(updates).some(key => !['username', 'display_name', 'avatar_url', 'phone', 'has_password'].includes(key))) {
+        return { error: 'No supported profile fields or unknown profile fields.' };
+    }
+    const verified = await supabase.auth.getUser();
+    if (verified.error || verified.data.user?.id !== user.id) return { error: 'Session could not be verified. Sign in again.' };
+    if (updates.username != null && !/^[a-zA-Z0-9_]{3,20}$/.test(updates.username)) return { error: 'Invalid username.' };
+    if (updates.display_name != null && (typeof updates.display_name !== 'string' || updates.display_name.length > 50)) return { error: 'Invalid display name.' };
+    if ('has_password' in updates && typeof updates.has_password !== 'boolean') return { error: 'Invalid password metadata.' };
 
-    const now = new Date().toISOString();
     const publicUpdates: Partial<SafeProfileUpdate> = {};
     const privateUpdates: Partial<SafeProfileUpdate> = {};
 
@@ -267,19 +278,19 @@ async function updateProfile(updates: Partial<UserProfile>) {
     if ('phone' in updates) privateUpdates.phone = updates.phone ?? null;
     if ('has_password' in updates) privateUpdates.has_password = updates.has_password === true;
 
-    const operations: Array<PromiseLike<{ error: { message: string } | null }>> = [];
+    const operations: Array<PromiseLike<{ error: string | null }>> = [];
     if (Object.keys(publicUpdates).length > 0) {
         operations.push(
-            supabase
-                .from('profiles')
-                .upsert({ id: user.id, ...publicUpdates, updated_at: now }),
+            writePublicProfile(supabase, user.id, publicUpdates),
         );
     }
     if (Object.keys(privateUpdates).length > 0) {
         operations.push(
             supabase
                 .from('profile_private')
-                .upsert({ user_id: user.id, ...privateUpdates, updated_at: now }),
+                .upsert({ user_id: user.id, ...privateUpdates })
+                .select('user_id').single()
+                .then((result: { error: { message: string } | null; data: unknown }) => ({ error: result.error?.message ?? (!result.data ? 'Private profile write was not acknowledged.' : null) })),
         );
     }
 
@@ -290,14 +301,17 @@ async function updateProfile(updates: Partial<UserProfile>) {
         window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT));
     }
 
-    return { error: error?.message ?? null };
+    return { error: error ?? (snapshot.profileStatus === 'error' ? snapshot.profileError : null) };
 }
 
 async function uploadAvatar(file: File) {
     const user = snapshot.user;
     if (!user) return { url: null, error: 'Not authenticated' };
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
+        return { url: null, error: 'Use a JPEG, PNG, or WebP image under 2MB.' };
+    }
 
-    const extension = file.name.split('.').pop()?.toLowerCase() || 'webp';
+    const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[file.type];
     const fileName = `${user.id}/avatar.${extension}`;
     const { error } = await supabase.storage
         .from('avatars')

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPredictionApiAccess } from '@/domain/predictions/apiAccess';
-import { getPredictionResponse } from '@/domain/predictions/engine';
-import { getPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
+import { getConfiguredPredictionResponse } from '@/domain/predictions/serverConfig';
+import { getPublicApiHeaders, getConfiguredPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
 import { parsePredictionRequestFromUrl } from '@/domain/predictions/request';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function OPTIONS(request: NextRequest) {
     return new Response(null, {
         status: 204,
-        headers: getPublicApiHeaders(request),
+        headers: await getConfiguredPublicApiHeaders(request),
     });
 }
 
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         });
     }
 
-    const response = getPredictionResponse(parsePredictionRequestFromUrl(request.nextUrl));
+    const response = await getConfiguredPredictionResponse(parsePredictionRequestFromUrl(request.nextUrl));
 
     return NextResponse.json(response, {
         headers: noStoreHeaders(getPublicApiHeaders(request)),

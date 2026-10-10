@@ -42,6 +42,9 @@ export interface LocationOverrideState {
     speedKph: number | null;
     accuracyMeters?: number | null;
     timestamp?: number | null;
+    lastTrustedFixAt?: number | null;
+    uncertaintyMeters?: number | null;
+    confidence?: 'high' | 'medium' | 'low';
 }
 
 export interface StationProximity {

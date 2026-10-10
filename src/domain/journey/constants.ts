@@ -9,6 +9,7 @@ export const JOURNEY_CONSTANTS = {
     transferExitRadiusMeters: 20,
     transferHardExitRadiusMeters: 10,
     transferExitAccuracyMeters: 60,
+    transferCorridorBaseMeters: 60,
     approachSnapKm: 0.05,
     fallbackGpsSilenceMs: 30000,
     fallbackMinPriorSpeedKph: 25,
@@ -26,9 +27,11 @@ export const JOURNEY_CONSTANTS = {
     railArrivalConfirmMs: 3000,
     busArrivalConfirmMs: 5000,
     arrivalMinSamples: 2,
+    arrivalMaxSampleGapMs: 10000,
     departureDistanceMeters: 75,
     coastingAfterMs: 8000,
     deadReckoningAfterMs: 15000,
     uncertainAfterMs: 90000,
     maxDeadReckoningUncertaintyMeters: 650,
-    recoveryDurationMs: 5000,} as const;
+    recoveryDurationMs: 5000,
+} as const;

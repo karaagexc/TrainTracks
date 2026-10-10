@@ -1,0 +1,22 @@
+import './journey-smoke.mjs';
+import assert from 'node:assert/strict';
+import Module from 'node:module';
+
+const require = Module.createRequire(import.meta.url);
+const { getCachedStationIcon, isMapTrainVisuallyMoving } = require('../src/components/mapIconCache.ts');
+let allocations = 0;
+const leaflet = { divIcon: options => { allocations++; return { options }; } };
+const base = { className: 'custom-station-icon', html: '<div class="animated-station">Station</div>', iconSize: [16, 16], iconAnchor: [8, 8] };
+const first = getCachedStationIcon(leaflet, 'L1-25', base);
+for (let index = 0; index < 100; index++) assert.equal(getCachedStationIcon(leaflet, 'L1-25', { ...base, iconSize: [16, 16], iconAnchor: [8, 8] }), first);
+assert.equal(allocations, 1, 'repeated live snapshots do not rebuild unchanged station DOM icons');
+assert.equal(first.options.html, base.html, 'cache does not rewrite styling or animations');
+const expanded = getCachedStationIcon(leaflet, 'L1-25', { ...base, className: 'custom-station-pill', iconSize: [120, 32], html: '<div class="animated-pill">Dr. Santos</div>' });
+assert.notEqual(expanded, first, 'real expansion/visual changes invalidate the icon');
+assert.equal(allocations, 2);
+const changed = getCachedStationIcon(leaflet, 'L1-25', { ...base, html: '<div>2 Trains Docked</div>' });
+assert.notEqual(changed, first, 'station counts/freshness/theme markup updates must render');
+assert.equal(isMapTrainVisuallyMoving({ speedKph: 36, statusCode: 'IN_TRANSIT', freshness: 'fresh' }), true);
+assert.equal(isMapTrainVisuallyMoving({ speedKph: 36, statusCode: 'IN_TRANSIT', freshness: 'fresh', lat: 1, lng: 2 }), true, 'unchanged position in a second store update is not a new visual stop');
+for (const sample of [{ speedKph: 0, statusCode: 'IN_TRANSIT' }, { speedKph: 36, statusCode: 'AT_STATION' }, { speedKph: 36, statusCode: 'IN_TRANSIT', freshness: 'stale' }, { speedKph: NaN, statusCode: 'IN_TRANSIT' }]) assert.equal(isMapTrainVisuallyMoving(sample), false);
+console.log('Map icon repair passed: stable station icons, visual invalidation, intact HTML/animations and sensor-motion indicator independent of store position deltas.');

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPredictionApiAccess } from '@/domain/predictions/apiAccess';
-import { getPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
-import { STALL_CONFIG } from '@/domain/alerts/stall';
+import { getPublicApiHeaders, getConfiguredPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
+import { getServerApiConfiguration } from '@/domain/predictions/serverConfig';
+import { API_CONFIG_DEFAULTS } from '@/domain/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ const AUTO_DISMISS_MS = 15_000;
 export async function OPTIONS(request: NextRequest) {
     return new Response(null, {
         status: 204,
-        headers: getPublicApiHeaders(request),
+        headers: await getConfiguredPublicApiHeaders(request),
     });
 }
 
@@ -32,24 +33,23 @@ export async function GET(request: NextRequest) {
         });
     }
 
-    const detectionTimeMinutes = Math.round(
-        (STALL_CONFIG.windowSamples * STALL_CONFIG.sampleIntervalMs) / 60_000
+    const configured = await getServerApiConfiguration();
+    const config = configured.config?.api_config.stall ?? API_CONFIG_DEFAULTS.stall;
+    const detectionTimeMinutes = (
+        ((config.windowSamples - 1) * config.sampleIntervalMs) / 60_000
     );
 
     return NextResponse.json({
         ok: true,
         config: {
-            sampleIntervalMs: STALL_CONFIG.sampleIntervalMs,
-            thresholdKm: STALL_CONFIG.thresholdKm,
-            windowSamples: STALL_CONFIG.windowSamples,
-            activationDistKm: STALL_CONFIG.activationDistKm,
+            ...config,
             autoDismissMs: AUTO_DISMISS_MS,
         },
         derived: {
             detectionTimeMinutes,
-            movementThresholdMeters: STALL_CONFIG.thresholdKm * 1000,
-            activationDistanceMeters: STALL_CONFIG.activationDistKm * 1000,
-            description: `Triggers after ${detectionTimeMinutes} minutes of < ${STALL_CONFIG.thresholdKm * 1000}m net movement, once ${STALL_CONFIG.activationDistKm * 1000}m from origin`,
+            movementThresholdMeters: config.thresholdKm * 1000,
+            activationDistanceMeters: config.activationDistKm * 1000,
+            description: `Triggers after ${detectionTimeMinutes} minutes of < ${config.thresholdKm * 1000}m route movement, once ${config.activationDistKm * 1000}m from origin`,
         },
         skipConditions: {
             undergroundStations: true,

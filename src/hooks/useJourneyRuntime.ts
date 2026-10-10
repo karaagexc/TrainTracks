@@ -12,15 +12,11 @@ import { useSmartLocation } from './useSmartLocation';
 export function useJourneyRuntime() {
     const status = useTripStore((state) => state.status);
     const origin = useTripStore((state) => state.origin);
-    const destination = useTripStore((state) => state.destination);
     const isDevMode = useTripStore((state) => state.isDevMode);
     const isGpsOverride = useTripStore((state) => state.isGpsOverride);
     const journeySnapshot = useTripStore((state) => state.journeySnapshot);
     const syncJourneySnapshot = useTripStore((state) => state.syncJourneySnapshot);
     const setGpsReconnecting = useTripStore((state) => state.setGpsReconnecting);
-    const setFallbackLocationActive = useTripStore((state) => state.setFallbackLocationActive);
-    const setFallbackLocation = useTripStore((state) => state.setFallbackLocation);
-    const setFallbackSpeed = useTripStore((state) => state.setFallbackSpeed);
 
     const {
         locationSample,
@@ -32,7 +28,7 @@ export function useJourneyRuntime() {
 
     const alignedRouteKeyRef = useRef<string | null>(null);
     const active = status === 'WAITING' || status === 'TRANSIT';
-    const routeKey = `${origin?.id ?? 'none'}:${destination?.id ?? 'none'}:${journeySnapshot.route?.operationalMode ?? 'none'}`;
+    const routeKey = journeySnapshot.tripId;
 
     useEffect(() => {
         alignedRouteKeyRef.current = null;
@@ -49,6 +45,7 @@ export function useJourneyRuntime() {
             ? locationSample.timestamp ?? Date.now()
             : rawGpsTimestamp;
         if (!location || !timestamp) return;
+        if (source === 'gps' && Math.abs(Date.now() - timestamp) > 5000) return;
 
         const current = useTripStore.getState().journeySnapshot;
         const shouldAlignLateEntry = alignedRouteKeyRef.current !== routeKey
@@ -72,8 +69,10 @@ export function useJourneyRuntime() {
                 source,
             });
 
-        alignedRouteKeyRef.current = routeKey;
-        syncJourneySnapshot(next);
+        if (next !== current) {
+            alignedRouteKeyRef.current = routeKey;
+            syncJourneySnapshot(next);
+        }
     }, [
         active,
         isGpsOverride,
@@ -108,17 +107,9 @@ export function useJourneyRuntime() {
 
     useEffect(() => {
         setGpsReconnecting(shouldShowGpsReconnectionBanner(journeySnapshot.gpsFallbackActive, isDevMode));
-        setFallbackLocationActive(false);
-        setFallbackLocation(journeySnapshot.gpsFallbackActive ? journeySnapshot.estimatedLocation : null);
-        setFallbackSpeed(journeySnapshot.gpsFallbackActive ? journeySnapshot.estimatedSpeedKph : null);
     }, [
-        journeySnapshot.estimatedLocation,
-        journeySnapshot.estimatedSpeedKph,
         journeySnapshot.gpsFallbackActive,
         isDevMode,
-        setFallbackLocation,
-        setFallbackLocationActive,
-        setFallbackSpeed,
         setGpsReconnecting,
     ]);
 }
