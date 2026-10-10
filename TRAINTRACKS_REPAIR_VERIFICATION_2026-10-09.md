@@ -232,6 +232,49 @@ Fable integration and user-assisted Google login remain production gates. Never
 promote an unverified preview, silently change maintenance or claim a production
 rollback is safe merely because an application deployment can be restored.
 
+### Published Draft And Preview
+
+Draft review: [GitHub PR #1](https://github.com/karaagexc/TrainTracks/pull/1).
+Tested application revision: `b4aab15e86ea111c1b860a2dadb228d154435e69`.
+Staged [Vercel Preview](https://traintracks-44o4gvce6-aaron-martinezs-projects-ea1c41f7.vercel.app)
+is **READY**, deployment `dpl_4teowhLteeJL2uTj5z45jFVZQSu3`, source CLI, with
+the exact tested commit/branch metadata and no production aliases. It is
+deployment-protected and is not a production-ready commuter release.
+
+The deployment was uploaded from a Git archive, not the dirty checkout.
+All 430 extracted archive files match their SHA-256 hashes. Vercel's uploaded
+source manifest contains 429 matching SHA-1 hashes, zero mismatches; only
+`.gitignore` is intentionally omitted by upload handling. Neither unrelated
+user SVG is uploaded. This validates source identity, not every runtime feature.
+
+Read-only preview HTTP results:
+
+| Surface | Result / interpretation |
+| --- | --- |
+| `/`, `/login`, `/explorer`, `/api-console`, `/docs`, `/admin` | 200 HTML; not proof of authenticated admin access or every mounted success state |
+| `/auth/reset-password`, `/auth/verified`, `/profile/setup` | 200 HTML; successful verification/profile writes and email delivery still pending |
+| `/api/predictions` | 200; internal navigation endpoint remains available |
+| `/api/admin/config` | 403 for anonymous request; no settings were changed |
+| `/api/trips` | 401 for anonymous request; no history was written |
+| `/api/map-tiles/dark/12/3425/1879.png` | 503; preview CARTO key is absent, so preview map rendering is not certified |
+| `/api/crowd/presence` | 503 `crowd_storage_unavailable`; privileged preview backend configuration is unavailable |
+| `/api/public/predictions` | 503; hosted public API availability/token lifecycle cannot be certified in this preview |
+| `/auth/callback?code=invalid-smoke-code` | 400, origin not allowlisted; this deliberately invalid request never establishes a session and is not a Google round trip |
+
+Requests used Vercel's supported protection-aware CLI. It generated a project
+automation bypass token for the protected preview; no token value was printed
+or committed. No application writes, production migration, maintenance change,
+CARTO secret-target expansion, main merge or production promotion occurred.
+The public app keys remain configured locally, but no `SUPABASE_DB_URL` is
+available for schema-management work. Do not copy production service-role
+credentials to previews merely to turn a failing check green.
+
+The HTTP checks and local browser fixtures have different boundaries: local
+browser writes were blocked/mocked, while hosted smoke requests were GET-only.
+Neither certifies real hosted OAuth cookies, Realtime transport, production
+permissions, physical GPS or complete pixel parity. Resolve the gates above
+before promoting this staged revision.
+
 ## Dependency Exposure
 
 Current npm audit: **8 high, 2 moderate, 0 critical**. Affected dependency chains
