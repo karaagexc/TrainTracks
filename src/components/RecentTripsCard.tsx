@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
 interface RecentTripsCardProps {
     trips: TripRecord[];
     onViewAll: () => void;
+    loading?: boolean;
+    error?: string | null;
 }
 
 function timeAgo(dateStr: string): string {
@@ -33,7 +35,7 @@ function getLineAccent(lineId: string): string {
     }
 }
 
-export default function RecentTripsCard({ trips, onViewAll }: RecentTripsCardProps) {
+export default function RecentTripsCard({ trips, onViewAll, loading = false, error = null }: RecentTripsCardProps) {
     const [visible, setVisible] = useState(true);
 
     if (!visible) return null;
@@ -44,9 +46,9 @@ export default function RecentTripsCard({ trips, onViewAll }: RecentTripsCardPro
             <div className="flex items-center justify-between mb-3 px-1">
                 <div className="flex items-center gap-2">
                     <History className="w-3.5 h-3.5 text-white/30" />
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-white/30">Recent Trips</span>
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-white/30">{error ? 'Recent Trips Unavailable' : 'Recent Trips'}</span>
                 </div>
-                {trips.length > 0 && (
+                {(trips.length > 0 || error) && (
                     <button
                         onClick={onViewAll}
                         className="flex items-center gap-0.5 text-[11px] font-bold text-white/40 hover:text-white/70 transition-colors group"
@@ -60,7 +62,7 @@ export default function RecentTripsCard({ trips, onViewAll }: RecentTripsCardPro
             {trips.length === 0 ? (
                 <div className="bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl p-6 flex flex-col items-center gap-2">
                     <TrainFront className="w-6 h-6 text-white/10" />
-                    <p className="text-xs text-white/25 font-medium text-center">No trips yet — complete a ride to start tracking!</p>
+                    <p className="text-xs text-white/25 font-medium text-center" role="status">{loading ? 'Loading trips...' : error ? 'Trip history unavailable' : 'No recent trips loaded'}</p>
                 </div>
             ) : (
                 <div className="bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl overflow-hidden divide-y divide-white/[0.04]">

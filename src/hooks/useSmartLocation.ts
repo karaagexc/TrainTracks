@@ -147,7 +147,7 @@ function handlePosition(pos: GeolocationPosition) {
         || speedChanged
         || accuracyChanged
         || headingChanged
-        || timestamp - lastListenerPublishAt >= 5000
+        || timestamp - lastListenerPublishAt >= (needsActiveGpsWatch() ? 1000 : 5000)
         || sharedLocationState.gpsError !== null;
 
     lastPositionSample = decision.fix;
@@ -448,6 +448,10 @@ export function useSmartLocation() {
     const fallbackLocation = useTripStore((state) => state.fallbackLocation);
     const fallbackHeading = useTripStore((state) => state.fallbackHeading);
     const fallbackSpeed = useTripStore((state) => state.fallbackSpeed);
+    const estimatedAt = useTripStore((state) => state.journeySnapshot.lastEstimatorUpdateAt);
+    const lastTrustedFixAt = useTripStore((state) => state.journeySnapshot.lastTrustedFixAt);
+    const uncertaintyMeters = useTripStore((state) => state.journeySnapshot.uncertaintyMeters);
+    const estimationConfidence = useTripStore((state) => state.journeySnapshot.estimatorConfidence);
     const currentStation = useTripStore((state) => state.currentStation);
     const setLocationRuntime = useLocationStore((state) => state.setLocationRuntime);
 
@@ -497,7 +501,11 @@ export function useSmartLocation() {
                 location: fallbackLocation,
                 rawHeading: fallbackHeading,
                 speedKph: fallbackSpeed,
-                accuracyMeters: 25,
+                accuracyMeters: uncertaintyMeters,
+                timestamp: estimatedAt,
+                lastTrustedFixAt,
+                uncertaintyMeters,
+                confidence: estimationConfidence.toLowerCase() as 'high' | 'medium' | 'low',
             };
         }
 
@@ -506,6 +514,10 @@ export function useSmartLocation() {
         fallbackHeading,
         fallbackLocation,
         fallbackSpeed,
+        estimatedAt,
+        lastTrustedFixAt,
+        uncertaintyMeters,
+        estimationConfidence,
         isFallbackLocationActive,
         isGpsOverride,
         simulatedHeading,

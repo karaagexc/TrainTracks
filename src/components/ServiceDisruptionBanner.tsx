@@ -13,6 +13,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { AlertTriangle, ShieldAlert, CheckCircle2, X, Clock, Users } from 'lucide-react';
 import { useIncidentListener } from '@/hooks/useIncidentListener';
 import type { IncidentView } from '@/domain/crowd/incidentAggregator';
+import type { IncidentVoteState } from '@/domain/crowd/incidentReceiver';
 
 function timeAgo(isoString: string): string {
     const diffMs = Date.now() - new Date(isoString).getTime();
@@ -31,13 +32,14 @@ function formatLineLabel(lineId: string): string {
     return lineId;
 }
 
-function IncidentBanner({ incident, onResolveVote, onDismiss }: {
+function IncidentBanner({ incident, onResolveVote, onDismiss, voteState }: {
     incident: IncidentView;
-    onResolveVote: (id: string) => void;
+    onResolveVote: (id: string) => Promise<IncidentVoteState>;
     onDismiss: (id: string) => void;
+    voteState?: IncidentVoteState;
 }) {
     const [isAnimating, setIsAnimating] = useState(false);
-    const [voted, setVoted] = useState(false);
+    const voted = voteState === 'pending' || voteState === 'queued' || voteState === 'confirmed';
 
     useEffect(() => {
         const t = setTimeout(() => setIsAnimating(true), 50);
@@ -46,8 +48,7 @@ function IncidentBanner({ incident, onResolveVote, onDismiss }: {
 
     const handleVote = useCallback(() => {
         if (voted) return;
-        setVoted(true);
-        onResolveVote(incident.id);
+        void onResolveVote(incident.id);
     }, [voted, onResolveVote, incident.id]);
 
     const isEmergency = incident.severity === 'emergency';
@@ -65,6 +66,7 @@ function IncidentBanner({ incident, onResolveVote, onDismiss }: {
                 {/* Dismiss */}
                 <button
                     onClick={() => onDismiss(incident.id)}
+                    aria-label="Dismiss service disruption"
                     className="absolute top-3 right-3 z-20 p-1 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
                 >
                     <X className="w-3.5 h-3.5 text-white/60" />
@@ -123,13 +125,14 @@ function IncidentBanner({ incident, onResolveVote, onDismiss }: {
                 <button
                     onClick={handleVote}
                     disabled={voted}
-                    className={`w-full mt-3 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.97] relative z-10 flex items-center justify-center gap-2 ${voted
+                    aria-busy={voteState === 'pending'}
+                    className={`w-full mt-3 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.97] relative z-10 flex items-center justify-center gap-2 ${voteState === 'confirmed'
                         ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 cursor-default'
                         : 'bg-white/10 hover:bg-white/15 border border-white/10 text-white'
                         }`}
                 >
                     <CheckCircle2 className="w-4 h-4" />
-                    {voted ? 'Vote recorded' : 'Trains moving again?'}
+                    <span role="status">{voteState === 'confirmed' ? 'Vote recorded' : voteState === 'pending' ? 'Vote pending confirmation' : voteState === 'queued' ? 'Vote queued - awaiting delivery' : voteState === 'error' ? 'Vote failed - retry' : 'Trains moving again?'}</span>
                 </button>
             </div>
         </div>
@@ -137,7 +140,7 @@ function IncidentBanner({ incident, onResolveVote, onDismiss }: {
 }
 
 export function ServiceDisruptionBanner() {
-    const { activeIncidents, voteResolve } = useIncidentListener();
+    const { activeIncidents, voteResolve, voteStates } = useIncidentListener();
     const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
     // Filter out dismissed incidents
@@ -162,6 +165,7 @@ export function ServiceDisruptionBanner() {
                         key={incident.id}
                         incident={incident}
                         onResolveVote={voteResolve}
+                        voteState={voteStates[incident.id]}
                         onDismiss={(id) => setDismissed((prev) => new Set([...prev, id]))}
                     />
                 ))}

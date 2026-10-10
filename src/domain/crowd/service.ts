@@ -1,13 +1,16 @@
 import 'server-only';
 
 import { broadcastCrowdPresence } from '@/domain/crowd/broadcast';
-import { createCrowdPseudonym } from '@/domain/crowd/identity';
+import { createCrowdPseudonym, createCrowdSampleIdentity } from '@/domain/crowd/identity';
 import {
     readCrowdPresenceDeviceId,
     sanitizeCrowdPresencePayload,
 } from '@/domain/crowd/presence';
 import { createAdminClient, hasAdminSupabaseConfig } from '@/lib/supabase/admin';
 import type { TrainPresence } from '@/types/train';
+import { isReceivedCrowdPresence } from '@/domain/crowd/receiver';
+import { getServerApiConfiguration } from '@/domain/predictions/serverConfig';
+import { API_CONFIG_DEFAULTS } from '@/domain/config';
 
 export interface CrowdPresenceServiceResult {
     ok: boolean;
@@ -24,11 +27,14 @@ interface CrowdPresenceRecordResult {
     duplicate?: boolean;
     broadcast_state_supported?: boolean;
     broadcasted?: boolean;
+    train?: TrainPresence;
 }
 
 interface CrowdBroadcastClaimResult {
     ok?: boolean;
     status?: 'acquired' | 'already_broadcasted' | 'claimed_elsewhere' | 'sample_not_found';
+    claim_token?: string;
+    train?: TrainPresence;
 }
 
 export async function processCrowdPresence(
@@ -59,7 +65,9 @@ export async function processCrowdPresence(
         };
     }
 
-    const pseudonym = createCrowdPseudonym(deviceId, secret, now);
+    const observedAt = payload && typeof payload === 'object' && 'updatedAt' in payload
+        && typeof payload.updatedAt === 'number' && Number.isFinite(payload.updatedAt) ? payload.updatedAt : now;
+    const pseudonym = createCrowdPseudonym(deviceId, secret, observedAt);
     const validation = sanitizeCrowdPresencePayload(payload, now, { pseudonym });
     if (!validation.ok || !validation.train || !validation.sampleId) {
         return {
@@ -71,9 +79,11 @@ export async function processCrowdPresence(
         };
     }
 
-    const train = validation.train;
-    const sampleId = validation.sampleId;
+    const sampleId = createCrowdSampleIdentity(validation.sampleId, pseudonym, secret);
+    let train: TrainPresence = { ...validation.train, sampleId };
     const admin = createAdminClient();
+    const configuration = await getServerApiConfiguration();
+    const config = configuration.config?.api_config ?? API_CONFIG_DEFAULTS;
     const { data, error } = await admin.rpc('record_crowd_presence', {
         p_pseudonym: pseudonym,
         p_line_id: train.lineId,
@@ -87,7 +97,8 @@ export async function processCrowdPresence(
         p_confidence: train.confidence,
         p_accuracy_meters: validation.accuracyMeters,
         p_sample_id: sampleId,
-        p_reported_at: new Date(now).toISOString(),
+        p_reported_at: new Date(train.updatedAt).toISOString(),
+        p_interval_ms: config.crowd.intervalMs,
     });
 
     if (error) {
@@ -102,18 +113,24 @@ export async function processCrowdPresence(
     }
 
     const record = data as CrowdPresenceRecordResult | null;
-    if (record?.ok === false) {
+    if (record?.ok !== true) {
         return {
             ok: false,
-            status: record.code === 'rate_limited' ? 429 : 422,
-            code: record.code ?? 'crowd_presence_rejected',
+            status: record?.code === 'rate_limited' ? 429 : 422,
+            code: record?.code ?? 'crowd_presence_rejected',
             message: 'Crowd presence was rejected by server plausibility checks.',
             train: null,
         };
     }
 
     const duplicate = record?.duplicate === true;
+    if (record.train) train = record.train;
     const supportsBroadcastState = record?.broadcast_state_supported === true;
+    let claimToken: string | null = null;
+    if (!supportsBroadcastState) {
+        return { ok: false, status: 503, code: 'crowd_migration_required',
+            message: 'Atomic crowd delivery storage is not available.', train: null };
+    }
     if (supportsBroadcastState && record?.broadcasted === true) {
         return {
             ok: true,
@@ -147,6 +164,7 @@ export async function processCrowdPresence(
         }
 
         const claim = claimData as CrowdBroadcastClaimResult | null;
+        if (claim?.train && isReceivedCrowdPresence(claim.train, now)) train = claim.train;
         if (claim?.status === 'already_broadcasted') {
             return {
                 ok: true,
@@ -167,7 +185,8 @@ export async function processCrowdPresence(
                 duplicate: true,
             };
         }
-        if (claim?.status !== 'acquired') {
+        if (claim?.status !== 'acquired' || !claim.claim_token || !isReceivedCrowdPresence(claim.train, now)
+            || claim.train.sampleId !== sampleId) {
             return {
                 ok: false,
                 status: 503,
@@ -177,6 +196,7 @@ export async function processCrowdPresence(
                 duplicate,
             };
         }
+        claimToken = claim.claim_token;
     }
 
     let broadcast;
@@ -197,6 +217,7 @@ export async function processCrowdPresence(
             const { error: releaseError } = await admin.rpc('release_crowd_presence_broadcast', {
                 p_pseudonym: pseudonym,
                 p_sample_id: sampleId,
+                p_claim_token: claimToken,
             });
             if (releaseError) {
                 console.error('[CrowdPresence] Broadcast claim release failed:', releaseError.message);
@@ -213,13 +234,16 @@ export async function processCrowdPresence(
     }
 
     if (supportsBroadcastState) {
-        const { error: markError } = await admin.rpc('mark_crowd_presence_broadcasted', {
+        const { data: markData, error: markError } = await admin.rpc('mark_crowd_presence_broadcasted', {
             p_pseudonym: pseudonym,
             p_sample_id: sampleId,
             p_broadcasted_at: new Date().toISOString(),
+            p_claim_token: claimToken,
         });
-        if (markError) {
-            console.error('[CrowdPresence] Broadcast completion mark failed:', markError.message);
+        if (markError || !(markData as { ok?: boolean } | null)?.ok) {
+            console.error('[CrowdPresence] Broadcast completion mark failed:', markError?.message ?? 'Claim no longer owned.');
+            return { ok: false, status: 503, code: 'broadcast_completion_failed',
+                message: 'Broadcast sent, but durable completion requires retry.', train, duplicate };
         }
     }
 

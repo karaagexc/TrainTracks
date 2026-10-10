@@ -4,158 +4,139 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { enqueueOutbox } from '@/domain/offline/outbox';
 import { useTripStore } from '@/store/useTripStore';
-import type { IncidentEventName, IncidentView } from '@/domain/crowd/incidentAggregator';
+import { createForegroundPoller, PollHttpError, parseRetryAfter } from '@/domain/network/runtime';
+import { isIncidentView, reconcileIncidentSnapshot, type IncidentVoteState } from '@/domain/crowd/incidentReceiver';
+import type { IncidentEventPayload, IncidentView } from '@/domain/crowd/incidentAggregator';
+import { getAnonymousCrowdDeviceId } from '@/domain/crowd/lease';
 
 const INCIDENT_CHANNEL = 'traintracks:incidents';
-const DEVICE_ID_KEY = 'traintracks_anonymous_device_id';
-
-function getDeviceId(): string {
-    if (typeof window === 'undefined') return 'server';
-
-    let id = window.localStorage.getItem(DEVICE_ID_KEY);
-    if (!id) {
-        id = typeof crypto !== 'undefined' && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `tt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-        window.localStorage.setItem(DEVICE_ID_KEY, id);
-    }
-    return id;
-}
 
 export interface UseIncidentListenerResult {
     activeIncidents: IncidentView[];
     hasActiveIncident: boolean;
-    voteResolve: (incidentId: string) => void;
+    voteResolve: (incidentId: string) => Promise<IncidentVoteState>;
+    voteStates: Record<string, IncidentVoteState>;
     channelStatus: string;
+    reconciliationError: string | null;
 }
 
 export function useIncidentListener(): UseIncidentListenerResult {
     const selectedLine = useTripStore((state) => state.selectedLine);
     const [incidents, setIncidents] = useState<IncidentView[]>([]);
     const [channelStatus, setChannelStatus] = useState('connecting');
-    const votingRef = useRef<Set<string>>(new Set());
-
-    const reconcile = useCallback(async () => {
-        if (!selectedLine) {
-            setIncidents([]);
-            return;
-        }
-
-        const response = await fetch(`/api/incidents?line=${selectedLine}`, {
-            cache: 'no-store',
-            headers: { Accept: 'application/json' },
-        });
-        if (!response.ok) return;
-
-        const payload = await response.json() as { ok?: boolean; incidents?: IncidentView[] };
-        if (payload.ok && Array.isArray(payload.incidents)) {
-            setIncidents(payload.incidents);
-        }
-    }, [selectedLine]);
+    const [reconciliationError, setReconciliationError] = useState<string | null>(null);
+    const [voteStates, setVoteStates] = useState<Record<string, IncidentVoteState>>({});
+    const votingRef = useRef(new Map<string, Promise<IncidentVoteState>>());
+    const reconcileRef = useRef<() => void>(() => {});
+    const mountedRef = useRef(false);
+    const [active, setActive] = useState(() => typeof document === 'undefined' || (!document.hidden && navigator.onLine));
 
     useEffect(() => {
-        let cancelled = false;
-        const refresh = () => {
-            if (!cancelled && !document.hidden && navigator.onLine) {
-                void reconcile();
-            }
-        };
-
-        refresh();
-        const interval = window.setInterval(refresh, 60_000);
-        window.addEventListener('online', refresh);
-        document.addEventListener('visibilitychange', refresh);
-
+        mountedRef.current = true;
+        const activity = () => setActive(!document.hidden && navigator.onLine);
+        document.addEventListener('visibilitychange', activity);
+        window.addEventListener('online', activity);
+        window.addEventListener('offline', activity);
         return () => {
-            cancelled = true;
-            window.clearInterval(interval);
-            window.removeEventListener('online', refresh);
-            document.removeEventListener('visibilitychange', refresh);
+            mountedRef.current = false;
+            document.removeEventListener('visibilitychange', activity);
+            window.removeEventListener('online', activity);
+            window.removeEventListener('offline', activity);
         };
-    }, [reconcile]);
+    }, []);
 
     useEffect(() => {
-        const supabase = createClient();
-        const channel = supabase.channel(INCIDENT_CHANNEL, {
-            config: { broadcast: { self: false } },
+        if (!selectedLine || !active) { setChannelStatus('idle'); return; }
+        let disposed = false;
+        const eventsReceivedAt = new Map<string, number>();
+        const eventVersions = new Map<string, number>();
+        const poller = createForegroundPoller({
+            intervalMs: 60_000,
+            isActive: () => !disposed && !document.hidden && navigator.onLine,
+            run: async (signal, isCurrent) => {
+                const startedAt = Date.now();
+                const response = await fetch(`/api/incidents?line=${selectedLine}`, {
+                    signal, cache: 'no-store', headers: { Accept: 'application/json' },
+                });
+                if (!response.ok) throw new PollHttpError(response.status, parseRetryAfter(response.headers.get('Retry-After')));
+                const payload = await response.json() as { ok?: boolean; incidents?: unknown[] };
+                if (!payload.ok || !Array.isArray(payload.incidents)) throw new Error('Invalid incident snapshot.');
+                if (!isCurrent()) return;
+                const incoming = payload.incidents.filter(isIncidentView).filter((incident) => incident.lineId === selectedLine);
+                setIncidents((current) => reconcileIncidentSnapshot(current, incoming, startedAt, eventsReceivedAt));
+                setReconciliationError(null);
+            },
+            onError: () => setReconciliationError('Incident reconciliation temporarily unavailable.'),
         });
-
-        const handleEvent = ({
-            payload,
-        }: {
-            payload: { event: IncidentEventName; incident: IncidentView };
-        }) => {
-            const incident = payload?.incident;
-            if (!incident) return;
-
-            if (payload.event === 'incident_resolved') {
-                setIncidents((current) => current.filter((item) => item.id !== incident.id));
-                return;
+        reconcileRef.current = () => poller.wake(true);
+        const supabase = createClient();
+        const channel = supabase.channel(INCIDENT_CHANNEL, { config: { broadcast: { self: false } } });
+        const handleEvent = ({ payload }: { payload: IncidentEventPayload }) => {
+            if (disposed || !isIncidentView(payload?.incident) || payload.incident.lineId !== selectedLine) return;
+            const incident = payload.incident;
+            const version = Date.parse(payload.generatedAt);
+            if (!Number.isFinite(version) || version < (eventVersions.get(incident.id) ?? 0)) return;
+            if (eventsReceivedAt.size >= 500 && !eventsReceivedAt.has(incident.id)) {
+                const oldest = eventsReceivedAt.keys().next().value!;
+                eventsReceivedAt.delete(oldest); eventVersions.delete(oldest);
             }
-
-            setIncidents((current) => {
-                const withoutIncident = current.filter((item) => item.id !== incident.id);
-                return [...withoutIncident, incident]
-                    .sort((left, right) => Date.parse(right.confirmedAt ?? right.firstReportedAt)
-                        - Date.parse(left.confirmedAt ?? left.firstReportedAt));
-            });
+            eventsReceivedAt.set(incident.id, Date.now()); eventVersions.set(incident.id, version);
+            setIncidents((current) => [...current.filter((item) => item.id !== incident.id), incident]
+                .filter((item) => item.status === 'CONFIRMED' && Date.parse(item.expiresAt) > Date.now()));
         };
-
         channel.on('broadcast', { event: 'incident_confirmed' }, handleEvent);
         channel.on('broadcast', { event: 'incident_updated' }, handleEvent);
         channel.on('broadcast', { event: 'incident_resolved' }, handleEvent);
         channel.subscribe((status: string) => {
+            if (disposed) return;
             setChannelStatus(status === 'SUBSCRIBED' ? 'live' : status.toLowerCase());
-            if (status === 'SUBSCRIBED') void reconcile();
+            if (status === 'SUBSCRIBED') poller.wake(true);
         });
-
+        poller.wake();
+        const prune = window.setInterval(() => setIncidents((current) => current.filter(
+            (incident) => Date.parse(incident.expiresAt) > Date.now(),
+        )), 5000);
         return () => {
-            void supabase.removeChannel(channel);
+            disposed = true; poller.stop(); reconcileRef.current = () => {};
+            window.clearInterval(prune); void supabase.removeChannel(channel);
         };
-    }, [reconcile]);
+    }, [active, selectedLine]);
 
-    const activeIncidents = selectedLine
-        ? incidents.filter((incident) => (
-            incident.lineId === selectedLine && incident.status === 'CONFIRMED'
-        ))
-        : [];
-
-    const voteResolve = useCallback((incidentId: string) => {
-        if (votingRef.current.has(incidentId)) return;
-        votingRef.current.add(incidentId);
-
-        const deviceId = getDeviceId();
-        const body = { incidentId, deviceId };
-        void fetch('/api/incidents/resolve', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            cache: 'no-store',
-            body: JSON.stringify(body),
-        }).then(async (response) => {
-            if (!response.ok) {
-                await enqueueOutbox(
-                    'incident_vote',
-                    '/api/incidents/resolve',
-                    body,
-                    `${incidentId}:${deviceId}`,
-                );
-            } else {
-                await reconcile();
-            }
-        }).catch(() => enqueueOutbox(
-            'incident_vote',
-            '/api/incidents/resolve',
-            body,
-            `${incidentId}:${deviceId}`,
-        )).finally(() => {
-            votingRef.current.delete(incidentId);
-        });
-    }, [reconcile]);
-
-    return {
-        activeIncidents,
-        hasActiveIncident: activeIncidents.length > 0,
-        voteResolve,
-        channelStatus,
-    };
+    const voteResolve = useCallback((incidentId: string): Promise<IncidentVoteState> => {
+        const pending = votingRef.current.get(incidentId);
+        if (pending) return pending;
+        const publish = (state: IncidentVoteState) => {
+            if (mountedRef.current) setVoteStates((current) => ({ ...current, [incidentId]: state }));
+            return state;
+        };
+        publish('pending');
+        const vote = (async (): Promise<IncidentVoteState> => {
+            const deviceId = await getAnonymousCrowdDeviceId();
+            if (!deviceId) return publish('error');
+            const body = { incidentId, deviceId };
+            try {
+                const response = await fetch('/api/incidents/resolve', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+                    body: JSON.stringify(body), signal: AbortSignal.timeout(10_000),
+                });
+                if (response.ok) {
+                    const result = await response.json().catch(() => null) as { ok?: boolean } | null;
+                    if (!result?.ok) return publish('error');
+                    reconcileRef.current(); return publish('confirmed');
+                }
+                if (response.status !== 408 && response.status !== 429 && response.status < 500) return publish('error');
+            } catch { /* Retain retryable votes below. */ }
+            try {
+                await enqueueOutbox('incident_vote', '/api/incidents/resolve', body, `${incidentId}:${deviceId}`);
+                return publish('queued');
+            } catch { return publish('error'); }
+        })();
+        votingRef.current.set(incidentId, vote);
+        void vote.finally(() => votingRef.current.delete(incidentId));
+        return vote;
+    }, []);
+    const activeIncidents = incidents.filter((incident) => incident.lineId === selectedLine
+        && incident.status === 'CONFIRMED' && Date.parse(incident.expiresAt) > Date.now());
+    return { activeIncidents, hasActiveIncident: activeIncidents.length > 0,
+        voteResolve, voteStates, channelStatus, reconciliationError };
 }

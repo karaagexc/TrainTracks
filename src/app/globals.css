@@ -89,11 +89,9 @@
     background: transparent !important;
     border: none !important;
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
-    transition: transform 0.3s ease;
   }
 
   .train-marker-icon:hover {
-    transform: scale(1.2);
     z-index: 10000 !important;
   }
 
@@ -113,30 +111,75 @@
     border-top-color: rgba(0, 0, 0, 0.85) !important;
   }
 
-  .leaflet-control-attribution {
-    margin: 0 5px 4px 0 !important;
-    padding: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    font-family: var(--font-cabin), Cabin, system-ui, sans-serif !important;
-    font-size: 9px !important;
-    font-weight: 500 !important;
-    line-height: 1.25 !important;
-  }
+}
 
-  .leaflet-control-attribution,
-  .leaflet-control-attribution a {
-    color: inherit !important;
-    text-decoration: none !important;
-  }
+/* Leaflet creates these classes at runtime; keep vendor overrides outside Tailwind layers. */
+.train-marker-icon > div {
+  transition: transform 0.3s ease, scale 0.3s ease;
+}
 
-  .tt-map-theme-dark .leaflet-control-attribution {
-    color: rgba(255, 255, 255, 0.42) !important;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
-  }
+.train-marker-icon:hover > div {
+  scale: 1.2;
+}
 
-  .tt-map-theme-light .leaflet-control-attribution {
-    color: rgba(9, 9, 11, 0.48) !important;
-    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
-  }
+.tt-map-attribution {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 401;
+  max-width: calc(100% - 148px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.tt-map-attribution a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.tt-map-theme-dark .tt-map-attribution {
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+
+.tt-map-theme-light .tt-map-attribution {
+  color: rgba(9, 9, 11, 0.9);
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+}
+
+.leaflet-container .leaflet-control-attribution {
+  margin: 0 5px 4px 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-family: inherit !important;
+  font-size: 9px !important;
+  font-weight: 500 !important;
+  line-height: 1.25 !important;
+}
+
+.leaflet-control-attribution,
+.leaflet-control-attribution a {
+  color: inherit !important;
+  text-decoration: none !important;
+}
+
+.tt-map-theme-dark .leaflet-control-attribution {
+  color: rgba(255, 255, 255, 0.42) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+
+.tt-map-theme-light .leaflet-control-attribution {
+  color: rgba(9, 9, 11, 0.48) !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
 }

@@ -9,6 +9,8 @@ import type { Coordinates, Station } from '@/types';
 import type { JourneyRailEdge, JourneyRoute } from './types';
 import { getJourneyStationById } from './graph';
 
+const edgePathCache = new Map<string, Coordinates[]>();
+
 export interface JourneyEdgeProjection extends PolylineProjection {
     edgeIndex: number;
     progress: number;
@@ -36,6 +38,8 @@ export function getJourneyRailEdgePath(
     from: Station,
     to: Station,
 ): Coordinates[] {
+    const cached = edgePathCache.get(edge.id);
+    if (cached) return cached;
     const geometry = edge.lineId === 'EDSA'
         ? getEdsaLegPath(from, to)
         : getTrackGeometryPath(edge.lineId, from, to);
@@ -43,7 +47,9 @@ export function getJourneyRailEdgePath(
         { latitude: from.latitude, longitude: from.longitude },
         { latitude: to.latitude, longitude: to.longitude },
     ];
-    return orientPath(geometry && geometry.length >= 2 ? geometry : fallback, from);
+    const path = orientPath(geometry && geometry.length >= 2 ? geometry : fallback, from);
+    edgePathCache.set(edge.id, path);
+    return path;
 }
 
 export function projectLocationToJourneyEdge(

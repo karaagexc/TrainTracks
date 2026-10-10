@@ -3,12 +3,23 @@ import withPWAInit from "@ducanh2912/next-pwa";
 const withPWA = withPWAInit({
     dest: "public",
     register: true,
-    skipWaiting: true,
+    cacheStartUrl: false,
+    dynamicStartUrl: false,
+    cacheOnFrontEndNav: false,
+    reloadOnOnline: false,
     disable: process.env.NODE_ENV === "development",
     extendDefaultRuntimeCaching: false,
     publicExcludes: ["!station-images/**/*"],
     workboxOptions: {
+        skipWaiting: false,
+        clientsClaim: false,
         cleanupOutdatedCaches: true,
+        // Never precache server HTML, RSC, or API responses, including auth routes.
+        manifestTransforms: [async (entries) => ({
+            manifest: entries.filter(({ url }) => !/\.(?:html|json|rsc|txt)(?:\?|$)/i.test(url)
+                && !/^\/(?:api|auth|profile|admin|login|api-console)(?:\/|$)/.test(url)),
+            warnings: [],
+        })],
         runtimeCaching: [
             {
                 urlPattern: ({ url }) => url.origin === self.location.origin
@@ -51,16 +62,27 @@ const withPWA = withPWAInit({
             },
             {
                 urlPattern: ({ request, url }) => request.mode === 'navigate'
-                    && url.origin === self.location.origin,
+                    && url.origin === self.location.origin
+                    && ['/', '/explorer', '/docs'].includes(url.pathname)
+                    && !url.search,
                 handler: "NetworkFirst",
                 options: {
-                    cacheName: "traintracks-pages-v2",
+                    cacheName: "traintracks-public-pages-v3",
                     networkTimeoutSeconds: 4,
                     expiration: {
                         maxEntries: 12,
                         maxAgeSeconds: 24 * 60 * 60,
                     },
                     cacheableResponse: { statuses: [200] },
+                    plugins: [{
+                        cacheWillUpdate: async ({ request, response }) => {
+                            if (!response || response.status !== 200 || response.redirected) return null;
+                            const url = new URL(response.url || request.url);
+                            if (!['/', '/explorer', '/docs'].includes(url.pathname) || url.search) return null;
+                            if (/private|no-store/i.test(response.headers.get('Cache-Control') || '')) return null;
+                            return response;
+                        },
+                    }],
                 },
             },
         ],

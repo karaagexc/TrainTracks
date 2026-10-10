@@ -2,42 +2,33 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    isRouteStalledWindow,
     STALL_CONFIG,
-    trimStallEvidenceWindow,
     type StallEvidenceSample,
 } from '@/domain/alerts/stall';
 import { enqueueOutbox } from '@/domain/offline/outbox';
 import { useLocationStore } from '@/store/useLocationStore';
 import { useTripStore } from '@/store/useTripStore';
+import { useTrainStore } from '@/store/useTrainStore';
 import { getDistanceKm } from '@/utils/geo';
 import type { StallReason, StallSeverity } from '@/domain/crowd/stallReport';
+import type { IncidentVoteState } from '@/domain/crowd/incidentReceiver';
+import { getAnonymousCrowdDeviceId } from '@/domain/crowd/lease';
+import { isReliableStallWindow } from '@/domain/crowd/stallDetection';
+import { useRuntimeApiConfig } from '@/domain/crowd/useRuntimeConfig';
 
 const AUTO_DISMISS_MS = 15_000;
-const DEVICE_ID_KEY = 'traintracks_anonymous_device_id';
 
 export type StallState = 'IDLE' | 'MONITORING' | 'STALLED' | 'CONFIRMED_DELAY' | 'DISMISSED';
 
 export interface StallDetectorResult {
     state: StallState;
     stallDurationMin: number;
+    reportStatus: IncidentVoteState | 'idle';
     onConfirmTraffic: () => void;
     onConfirmEmergency: () => void;
     onDismissDelay: () => void;
 }
 
-function getDeviceId(): string {
-    if (typeof window === 'undefined') return 'server';
-
-    let id = window.localStorage.getItem(DEVICE_ID_KEY);
-    if (!id) {
-        id = typeof crypto !== 'undefined' && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `tt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-        window.localStorage.setItem(DEVICE_ID_KEY, id);
-    }
-    return id;
-}
 
 function createReportId() {
     return typeof crypto !== 'undefined' && crypto.randomUUID
@@ -46,15 +37,7 @@ function createReportId() {
 }
 
 function routeDistanceMeters() {
-    const snapshot = useTripStore.getState().journeySnapshot;
-    const route = snapshot.route;
-    if (!route) return 0;
-
-    const completed = route.edges
-        .slice(0, snapshot.activeEdgeIndex)
-        .reduce((sum, edge) => sum + edge.distanceMeters, 0);
-    const active = route.edges[snapshot.activeEdgeIndex];
-    return completed + (active?.distanceMeters ?? 0) * snapshot.legProgress / 100;
+    return useTripStore.getState().journeySnapshot.completedDistanceMeters;
 }
 
 function isNearJourneyStation() {
@@ -73,9 +56,11 @@ function isNearJourneyStation() {
 }
 
 export function useStallDetector(): StallDetectorResult {
+    const config = useRuntimeApiConfig().stall;
     const status = useTripStore((state) => state.status);
     const [state, setState] = useState<StallState>('IDLE');
     const [stallDurationMin, setStallDurationMin] = useState(0);
+    const [reportStatus, setReportStatus] = useState<IncidentVoteState | 'idle'>('idle');
     const samplesRef = useRef<StallEvidenceSample[]>([]);
     const lastLocationTimestampRef = useRef<number | null>(null);
     const cooldownUntilRef = useRef(0);
@@ -88,7 +73,7 @@ export function useStallDetector(): StallDetectorResult {
         }
         samplesRef.current = [];
         cooldownUntilRef.current = cooldown
-            ? Date.now() + STALL_CONFIG.rearmCooldownMs
+            ? Date.now() + useTrainStore.getState().apiConfig.stall.deviceCooldownMs
             : 0;
         setState(status === 'TRANSIT' ? 'MONITORING' : 'IDLE');
     }, [status]);
@@ -100,12 +85,21 @@ export function useStallDetector(): StallDetectorResult {
         const sample = useLocationStore.getState().sample;
         const trip = useTripStore.getState();
         const anchorStation = trip.currentStation ?? trip.origin;
-        if (!sample?.location || sample.source !== 'gps' || !anchorStation) return;
+        if (!sample?.location || sample.source !== 'gps' || !sample.timestamp || !anchorStation
+            || trip.isDevMode || trip.isGpsOverride || Date.now() - sample.timestamp > 15_000) return;
+        setReportStatus('pending');
+        const deviceId = await getAnonymousCrowdDeviceId();
+        if (!deviceId) { setReportStatus('error'); return; }
+        const currentSample = useLocationStore.getState().sample;
+        if (currentSample?.source !== 'gps' || currentSample.timestamp !== sample.timestamp
+            || Date.now() - sample.timestamp > 15_000 || useTripStore.getState().status !== 'TRANSIT') {
+            setReportStatus('error'); return;
+        }
 
         const reportId = createReportId();
         const body = {
             reportId,
-            deviceId: getDeviceId(),
+            deviceId,
             lineId: anchorStation.lineId,
             lat: sample.location.latitude,
             lng: sample.location.longitude,
@@ -113,6 +107,8 @@ export function useStallDetector(): StallDetectorResult {
             severity,
             reason,
             stallDurationMin,
+            locationSource: 'gps',
+            observedAt: sample.timestamp,
         };
 
         try {
@@ -124,18 +120,25 @@ export function useStallDetector(): StallDetectorResult {
                 },
                 cache: 'no-store',
                 body: JSON.stringify(body),
+                signal: AbortSignal.timeout(10_000),
             });
-            if (response.ok) return;
+            if (response.ok) {
+                const result = await response.json().catch(() => null) as { ok?: boolean } | null;
+                setReportStatus(result?.ok ? 'confirmed' : 'error'); return;
+            }
+            if (response.status !== 408 && response.status !== 429 && response.status < 500) {
+                setReportStatus('error'); return;
+            }
         } catch {
             // Queue below.
         }
 
-        await enqueueOutbox(
+        try { await enqueueOutbox(
             'stall_report',
             '/api/stall-report',
             body,
             reportId,
-        );
+        ); setReportStatus('queued'); } catch { setReportStatus('error'); }
     }, [stallDurationMin]);
 
     useEffect(() => {
@@ -161,7 +164,10 @@ export function useStallDetector(): StallDetectorResult {
                 !locationSample?.location
                 || locationSample.source !== 'gps'
                 || !locationSample.timestamp
-                || locationSample.timestamp === lastLocationTimestampRef.current
+                || locationSample.timestamp <= (lastLocationTimestampRef.current ?? 0)
+                || Date.now() - locationSample.timestamp > 15_000
+                || locationSample.timestamp > Date.now() + 5000
+                || document.hidden || !navigator.onLine
                 || (locationSample.accuracyMeters ?? 999) > STALL_CONFIG.maxStationAccuracyMeters
             ) {
                 return;
@@ -179,16 +185,18 @@ export function useStallDetector(): StallDetectorResult {
             if (Date.now() < cooldownUntilRef.current || state !== 'MONITORING') return;
 
             const now = locationSample.timestamp;
-            samplesRef.current = trimStallEvidenceWindow([
+            const windowMs = (config.windowSamples - 1) * config.sampleIntervalMs;
+            samplesRef.current = [
                 ...samplesRef.current,
                 {
                     timestamp: now,
                     routeDistanceMeters: routeDistanceMeters(),
                     speedKph: locationSample.speedKph ?? 0,
                 },
-            ], now);
+            ].filter((evidence) => evidence.timestamp >= now - windowMs - config.sampleIntervalMs * 2)
+                .slice(-config.windowSamples - 2);
 
-            if (!isRouteStalledWindow(samplesRef.current)) return;
+            if (!isReliableStallWindow(samplesRef.current, config)) return;
 
             const durationMs = now - samplesRef.current[0].timestamp;
             setStallDurationMin(Math.max(1, Math.round(durationMs / 60_000)));
@@ -199,9 +207,9 @@ export function useStallDetector(): StallDetectorResult {
         };
 
         sample();
-        const interval = window.setInterval(sample, STALL_CONFIG.sampleIntervalMs);
+        const interval = window.setInterval(sample, config.sampleIntervalMs);
         return () => window.clearInterval(interval);
-    }, [resetPrompt, state, status]);
+    }, [resetPrompt, state, status, config]);
 
     useEffect(() => () => {
         if (autoDismissRef.current) clearTimeout(autoDismissRef.current);
@@ -216,9 +224,9 @@ export function useStallDetector(): StallDetectorResult {
         if (autoDismissRef.current) clearTimeout(autoDismissRef.current);
         void submitStallReport('confirmed_emergency', 'full_stop');
         samplesRef.current = [];
-        cooldownUntilRef.current = Date.now() + STALL_CONFIG.rearmCooldownMs;
+        cooldownUntilRef.current = Date.now() + config.deviceCooldownMs;
         setState('CONFIRMED_DELAY');
-    }, [submitStallReport]);
+    }, [submitStallReport, config.deviceCooldownMs]);
 
     const onDismissDelay = useCallback(() => {
         resetPrompt(true);
@@ -227,6 +235,7 @@ export function useStallDetector(): StallDetectorResult {
     return {
         state,
         stallDurationMin,
+        reportStatus,
         onConfirmTraffic,
         onConfirmEmergency,
         onDismissDelay,

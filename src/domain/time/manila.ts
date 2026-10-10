@@ -37,6 +37,17 @@ const WEEKDAY_INDEX: Record<string, number> = {
 
 let cachedTime = Number.NaN;
 let cachedParts: ManilaDateParts | null = null;
+const manilaFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: MANILA_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+});
 
 function pad(value: number): string {
     return String(value).padStart(2, '0');
@@ -46,17 +57,7 @@ export function getManilaDateParts(date: Date): ManilaDateParts {
     const time = date.getTime();
     if (cachedParts && cachedTime === time) return cachedParts;
 
-    const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: MANILA_TIMEZONE,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        weekday: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hourCycle: 'h23',
-    }).formatToParts(date);
+    const parts = manilaFormatter.formatToParts(date);
 
     const byType = new Map(parts.map((part) => [part.type, part.value]));
     const year = Number(byType.get('year'));

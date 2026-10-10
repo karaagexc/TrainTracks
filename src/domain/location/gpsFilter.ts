@@ -32,6 +32,7 @@ function isValidFix(fix: GpsPositionFix): boolean {
         && Math.abs(fix.location.latitude) <= 90
         && Math.abs(fix.location.longitude) <= 180
         && Number.isFinite(fix.timestamp)
+        && fix.timestamp > 0
         && Number.isFinite(fix.accuracyMeters)
         && fix.accuracyMeters >= 0;
 }

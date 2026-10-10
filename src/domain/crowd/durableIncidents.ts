@@ -20,6 +20,8 @@ import { broadcastIncidentEvent } from '@/domain/crowd/incidentBroadcast';
 import { broadcastStallReport } from '@/domain/crowd/stallBroadcast';
 import { createAdminClient, hasAdminSupabaseConfig } from '@/lib/supabase/admin';
 import type { LineId } from '@/types';
+import { getServerApiConfiguration } from '@/domain/predictions/serverConfig';
+import { API_CONFIG_DEFAULTS } from '@/domain/config';
 
 interface IncidentRow {
     id: string;
@@ -121,7 +123,9 @@ function rawDeviceId(payload: unknown): string | null {
 
 export async function processStallReport(payload: unknown): Promise<DurableIncidentResult> {
     const now = Date.now();
-    const validation = sanitizeStallReportPayload(payload, now, { enforceMemoryRateLimit: false });
+    const configuration = await getServerApiConfiguration();
+    const config = configuration.config?.api_config.stall ?? API_CONFIG_DEFAULTS.stall;
+    const validation = sanitizeStallReportPayload(payload, now, { enforceMemoryRateLimit: false, config });
     if (!validation.ok || !validation.report) {
         return {
             ok: false,
@@ -170,6 +174,10 @@ export async function processStallReport(payload: unknown): Promise<DurableIncid
         p_message: report.message,
         p_stall_duration_minutes: report.stallDurationMin,
         p_reported_at: new Date(report.reportedAt).toISOString(),
+        p_device_cooldown_ms: config.deviceCooldownMs,
+        p_max_reports_per_hour: config.maxReportsPerHour,
+        p_min_duration_min: config.minDurationMin,
+        p_max_station_distance_km: config.maxStationDistKm,
     });
 
     if (error) {
@@ -189,11 +197,11 @@ export async function processStallReport(payload: unknown): Promise<DurableIncid
         event?: IncidentEventName | null;
         incident?: IncidentRow;
     } | null;
-    if (record?.ok === false) {
+    if (record?.ok !== true) {
         return {
             ok: false,
-            status: record.code?.includes('limit') ? 429 : 409,
-            code: record.code ?? 'incident_rejected',
+            status: record?.code?.includes('limit') ? 429 : 409,
+            code: record?.code ?? 'incident_rejected',
             message: 'The report was rejected by durable anti-abuse checks.',
         };
     }
@@ -201,11 +209,11 @@ export async function processStallReport(payload: unknown): Promise<DurableIncid
     const incident = record?.incident ? toIncidentView(record.incident) : null;
     const event = incident ? toEvent(record?.event, incident) : null;
 
-    const [stallBroadcast, incidentBroadcast] = await Promise.all([
+    const [stallBroadcast, incidentBroadcast] = record.duplicate ? [null, null] : await Promise.all([
         broadcastStallReport(report),
         event ? broadcastIncidentEvent(event) : Promise.resolve(null),
     ]);
-    if (!stallBroadcast.ok) {
+    if (stallBroadcast && !stallBroadcast.ok) {
         console.warn('[Incidents] Report stored but realtime stall broadcast failed:', stallBroadcast.message);
     }
     if (incidentBroadcast && !incidentBroadcast.ok) {
@@ -225,21 +233,14 @@ export async function processStallReport(payload: unknown): Promise<DurableIncid
 }
 
 export async function listDurableIncidents(lineId?: LineId | null): Promise<IncidentView[]> {
-    if (!hasAdminSupabaseConfig()) return [];
+    return (await listDurableIncidentSnapshot(lineId)).incidents;
+}
+
+export async function listDurableIncidentSnapshot(lineId?: LineId | null) {
+    if (!hasAdminSupabaseConfig()) return { ok: false, status: 503, incidents: [] as IncidentView[] };
 
     const admin = createAdminClient();
     const now = new Date().toISOString();
-    await admin
-        .from('crowd_incidents')
-        .update({
-            status: 'RESOLVED',
-            resolved_at: now,
-            resolved_by: 'auto_expired',
-            updated_at: now,
-        })
-        .neq('status', 'RESOLVED')
-        .lt('expires_at', now);
-
     let query = admin
         .from('crowd_incidents')
         .select('*')
@@ -252,9 +253,9 @@ export async function listDurableIncidents(lineId?: LineId | null): Promise<Inci
     const { data, error } = await query;
     if (error) {
         console.error('[Incidents] Durable list failed:', error.message);
-        return [];
+        return { ok: false, status: 503, incidents: [] as IncidentView[] };
     }
-    return (data as IncidentRow[]).map((row) => toIncidentView(row));
+    return { ok: true, status: 200, incidents: ((data ?? []) as IncidentRow[]).map((row) => toIncidentView(row)) };
 }
 
 export async function resolveDurableIncident(

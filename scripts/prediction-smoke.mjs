@@ -36,6 +36,13 @@ Module._extensions['.ts'] = transpileTypeScript;
 Module._extensions['.tsx'] = transpileTypeScript;
 
 const require = Module.createRequire(import.meta.url);
+const configPath = require.resolve('../src/domain/config/server.ts');
+const { API_CONFIG_DEFAULTS } = require('../src/domain/config/index.ts');
+require.cache[configPath] = { id: configPath, filename: configPath, loaded: true, exports: {
+    loadServerConfig: async () => ({ status: 'ready', error: null, config: {
+        public_api_enabled: true, api_config: structuredClone(API_CONFIG_DEFAULTS), updated_at: 'fixture-version',
+    } }),
+} };
 const { STATIONS } = require('../src/data/stations.ts');
 const { getSegmentDistance } = require('../src/data/segmentDistances.ts');
 const { verifyPredictionApiAccess } = require('../src/domain/predictions/apiAccess.ts');

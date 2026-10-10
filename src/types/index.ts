@@ -52,6 +52,9 @@ export interface LocationSample {
     accuracyMeters: number | null;
     timestamp: number | null;
     source: 'gps' | 'simulation' | 'fallback';
+    lastTrustedFixAt?: number | null;
+    uncertaintyMeters?: number | null;
+    confidence?: 'high' | 'medium' | 'low';
 }
 
 export interface LocationStatus {

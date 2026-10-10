@@ -80,6 +80,13 @@ export interface PredictionRequest {
     scope?: PredictionScope;
     mode?: OperationalMode;
     limit?: number;
+    config?: PredictionModelConfig;
+}
+
+export interface PredictionModelConfig {
+    defaultLimit: number;
+    validWindowS: number;
+    stationLookaheadMin: number;
 }
 
 interface ManilaParts {
@@ -216,8 +223,7 @@ function pad(value: number): string {
     return String(value).padStart(2, '0');
 }
 
-function getManilaParts(date: Date): ManilaParts {
-    const parts = new Intl.DateTimeFormat('en-US', {
+const manilaFormatter = new Intl.DateTimeFormat('en-US', {
         timeZone: MANILA_TIMEZONE,
         year: 'numeric',
         month: '2-digit',
@@ -226,7 +232,12 @@ function getManilaParts(date: Date): ManilaParts {
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
-    }).formatToParts(date);
+    });
+const dispatchCache = new Map<string, number[]>();
+const timelineCache = new Map<string, RouteTimeline>();
+
+function getManilaParts(date: Date): ManilaParts {
+    const parts = manilaFormatter.formatToParts(date);
 
     const byType = new Map(parts.map((part) => [part.type, part.value]));
     const year = Number(byType.get('year'));
@@ -392,6 +403,11 @@ function getDwellSeconds(station: Station, profile: DaypartServiceProfile): numb
 }
 
 function buildTimeline(stations: Station[], profile: DaypartServiceProfile): RouteTimeline {
+    const key = JSON.stringify([SOURCE_VERSION, profile.name, profile.confidence,
+        stations.map((station, index) => [station.id, station.latitude, station.longitude, station.transfers,
+            index === 0 ? 0 : getSegmentMeters(stations[index - 1], station)])]);
+    const cached = timelineCache.get(key);
+    if (cached) return cached;
     let cursorSec = 0;
     const stops: RouteStop[] = [{ station: stations[0], arrivalSec: 0, departureSec: 0 }];
     const segments: RouteSegment[] = [];
@@ -416,12 +432,15 @@ function buildTimeline(stations: Station[], profile: DaypartServiceProfile): Rou
         cursorSec = departureSec;
     }
 
-    return {
+    const timeline = {
         stations,
         stops,
         segments,
         durationSec: cursorSec,
     };
+    if (timelineCache.size >= 64) timelineCache.delete(timelineCache.keys().next().value!);
+    timelineCache.set(key, timeline);
+    return timeline;
 }
 
 function buildDispatches(parts: ManilaParts, lineId: RailLineId, direction: Direction, dayType: ServiceDayType, untilMs: number): number[] {
@@ -430,20 +449,25 @@ function buildDispatches(parts: ManilaParts, lineId: RailLineId, direction: Dire
 
     const firstMs = manilaTimeToMs(parts, schedule.first);
     const lastMs = manilaTimeToMs(parts, schedule.last);
+    const key = JSON.stringify([SOURCE_VERSION, parts.dateKey, lineId, direction, dayType, schedule]);
+    const cached = dispatchCache.get(key);
+    if (cached) return cached.filter((dispatch) => dispatch <= untilMs);
     const dispatches: number[] = [];
     let cursorMs = firstMs;
     let guard = 0;
 
-    while (cursorMs <= lastMs && cursorMs <= untilMs && guard < 600) {
+    while (cursorMs <= lastMs && guard < 600) {
         dispatches.push(cursorMs);
-        const cursorParts = getManilaParts(new Date(cursorMs));
-        const profile = getServiceProfile(lineId, dayType, cursorParts.minutesOfDay);
+        const minutesOfDay = (cursorMs - manilaTimeToMs(parts, '00:00')) / 60_000;
+        const profile = getServiceProfile(lineId, dayType, minutesOfDay);
         const headwayMs = Math.max(MIN_HEADWAY_MINUTES, profile.headwayMinutes) * 60_000;
         cursorMs += headwayMs;
         guard += 1;
     }
 
-    return dispatches;
+    if (dispatchCache.size >= 48) dispatchCache.delete(dispatchCache.keys().next().value!);
+    dispatchCache.set(key, dispatches);
+    return dispatches.filter((dispatch) => dispatch <= untilMs);
 }
 
 function getLineServiceState(
@@ -757,6 +781,7 @@ function stationPredictionForDispatch(
     profile: DaypartServiceProfile,
     firstMs: number,
     lastMs: number,
+    stationLookaheadMs: number,
 ): PredictedTrain | null {
     const stop = timeline.stops.find((candidate) => candidate.station.id === station.id);
     if (!stop) return null;
@@ -764,7 +789,7 @@ function stationPredictionForDispatch(
     const arrivalMs = dispatchMs + stop.arrivalSec * 1000;
     const departureMs = dispatchMs + stop.departureSec * 1000;
     if (departureMs < nowMs - STATION_GRACE_MS) return null;
-    if (arrivalMs > nowMs + STATION_LOOKAHEAD_MS) return null;
+    if (arrivalMs > nowMs + stationLookaheadMs) return null;
 
     const dispatchId = buildDispatchId(lineId, direction, dispatchMs);
     const edgeConfidence = applyServiceEdgeConfidence(profile.confidence, dispatchMs, firstMs, lastMs);
@@ -821,6 +846,7 @@ function getDirectionPredictions({
     limit,
     nowMs,
     validUntil,
+    stationLookaheadMs,
 }: {
     parts: ManilaParts;
     dayType: ServiceDayType;
@@ -832,6 +858,7 @@ function getDirectionPredictions({
     limit: number;
     nowMs: number;
     validUntil: number;
+    stationLookaheadMs: number;
 }): { predictions: PredictedTrain[]; serviceState: PredictionServiceState } {
     const profile = getServiceProfile(lineId, dayType, parts.minutesOfDay);
     const stations = getRouteStations(lineId, direction, mode);
@@ -849,7 +876,7 @@ function getDirectionPredictions({
     if (!schedule) return { predictions: [], serviceState: 'unavailable' };
     const firstMs = manilaTimeToMs(parts, schedule.first);
     const lastMs = manilaTimeToMs(parts, schedule.last);
-    const lookaheadMs = scope === 'station' ? STATION_LOOKAHEAD_MS : MAP_LOOKAHEAD_MS;
+    const lookaheadMs = scope === 'station' ? stationLookaheadMs : MAP_LOOKAHEAD_MS;
     const dispatches = buildDispatches(parts, lineId, direction, dayType, nowMs + lookaheadMs);
 
     if (scope === 'map') {
@@ -872,7 +899,7 @@ function getDirectionPredictions({
     if (!station) return { predictions: [], serviceState: 'invalid_request' };
 
     const stationPredictions = dispatches
-        .map((dispatchMs) => stationPredictionForDispatch(timeline, station, lineId, direction, dispatchMs, nowMs, validUntil, profile, firstMs, lastMs))
+        .map((dispatchMs) => stationPredictionForDispatch(timeline, station, lineId, direction, dispatchMs, nowMs, validUntil, profile, firstMs, lastMs, stationLookaheadMs))
         .filter((prediction): prediction is PredictedTrain => !!prediction)
         .sort((left, right) => (left.etaSeconds ?? Number.MAX_SAFE_INTEGER) - (right.etaSeconds ?? Number.MAX_SAFE_INTEGER))
         .slice(0, Math.max(1, limit));
@@ -893,15 +920,38 @@ function combineServiceState(states: PredictionServiceState[]): PredictionServic
     return states[0] ?? 'unavailable';
 }
 
+/** Same calendar as forecasts; includes the last dispatched train's remaining service. */
+export function getTrainServiceAvailability({ now = new Date(), lineId = null }: {
+    now?: Date;
+    lineId?: RailLineId | null;
+} = {}): boolean {
+    if (!Number.isFinite(now.getTime())) return false;
+    const parts = getManilaParts(now);
+    const dayType = resolveDayType(parts);
+    if (dayType === 'major_maintenance') return false;
+    const lines = lineId ? LIVE_LINES.filter((line) => line === lineId) : LIVE_LINES;
+    return lines.some((line) => (LINE_DIRECTIONS[line] ?? []).some((direction) => {
+        const profile = getServiceProfile(line, dayType, parts.minutesOfDay);
+        const stations = getRouteStations(line, direction, 'live');
+        if (!stations.length || profile.confidence === 'unavailable') return false;
+        const timeline = buildTimeline(stations, profile);
+        const state = getLineServiceState(parts, line, direction, dayType, now.getTime(), timeline.durationSec);
+        return state === 'active' || state === 'service_closed';
+    }));
+}
+
 export function getPredictionResponse(request: PredictionRequest = {}): PredictionResponse {
     const now = request.now ?? new Date();
     const nowMs = now.getTime();
-    const validUntil = nowMs + API_VALID_MS;
+    const validWindowMs = request.config ? Math.min(120, Math.max(5, request.config.validWindowS)) * 1000 : API_VALID_MS;
+    const stationLookaheadMs = request.config
+        ? Math.min(120, Math.max(5, request.config.stationLookaheadMin)) * 60_000 : STATION_LOOKAHEAD_MS;
+    const validUntil = nowMs + validWindowMs;
     const parts = getManilaParts(now);
     const dayType = resolveDayType(parts);
     const scope = request.scope ?? 'station';
     const mode = request.mode ?? 'live';
-    const limit = Math.min(Math.max(1, request.limit ?? DEFAULT_LIMIT), 20);
+    const limit = Math.min(Math.max(1, request.limit ?? request.config?.defaultLimit ?? DEFAULT_LIMIT), 20);
     const station = request.stationId
         ? getLineStations(request.lineId ?? 'LRT1', mode, mode === 'sandbox' ? 'WITH_NA' : 'OFF').find((candidate) => candidate.id === request.stationId)
             ?? getLineStations('LRT2', mode, mode === 'sandbox' ? 'WITH_NA' : 'OFF').find((candidate) => candidate.id === request.stationId)
@@ -964,6 +1014,7 @@ export function getPredictionResponse(request: PredictionRequest = {}): Predicti
                 limit,
                 nowMs,
                 validUntil,
+                stationLookaheadMs,
             });
             predictions.push(...result.predictions);
             serviceStates.push(result.serviceState);

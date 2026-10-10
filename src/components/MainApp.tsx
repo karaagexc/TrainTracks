@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useShallow } from 'zustand/react/shallow';
 import dynamic from 'next/dynamic';
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useTripStore } from "@/store/useTripStore";
@@ -38,10 +39,10 @@ import { useGpsCrowdsource } from "@/hooks/useGpsCrowdsource";
 import { useMockTrainEngine } from "@/hooks/useMockTrainEngine";
 import { useLocationStore } from "@/store/useLocationStore";
 import { useAuth } from "@/hooks/useAuth";
-import { useTripHistory } from "@/hooks/useTripHistory";
+import { useTripHistory, type TripWrite } from "@/hooks/useTripHistory";
 import { useMaintenanceMode } from "@/hooks/useMaintenanceMode";
 import { Bell, Map as MapIcon, Sun, Moon, Settings, Users, User, Eye, Radio, ShieldCheck, X } from "lucide-react";
-import { useOfflineRuntime } from "@/hooks/useOfflineRuntime";
+import { useOfflineRuntime, usePwaUpdateRuntime } from "@/hooks/useOfflineRuntime";
 import { useTripPersistence } from "@/hooks/useTripPersistence";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { getThemeColors } from "@/utils/stationUtils";
@@ -49,6 +50,7 @@ import { useGatekeeper } from "@/hooks/useGatekeeper";
 import { useOperatingHours } from "@/hooks/useOperatingHours";
 import { cn } from "@/lib/utils";
 import { getStationProximity } from "@/domain/location/stationProximity";
+import { getJourneyEntryDirection } from "@/domain/journey/engine";
 import { getOperationalMode } from "@/domain/railway";
 import { ClosedScreen } from "@/components/screens/ClosedScreen";
 import { MaintenanceScreen } from "@/components/screens/MaintenanceScreen";
@@ -62,6 +64,8 @@ const MapExplorer = dynamic(() => import('@/components/MapExplorer'), { ssr: fal
 
 function RuntimeServices() {
     const tripActive = useTripStore((state) => state.status === 'WAITING' || state.status === 'TRANSIT');
+    const canActivateUpdate = useTripStore((state) => state.persistenceHydrated && state.status === 'IDLE' && !state.origin && !state.pendingTripRecovery && !state.pendingCompletedTrip);
+    usePwaUpdateRuntime({ canActivate: canActivateUpdate });
     useWakeLock(tripActive);
     useRealtimeTrainPresence();
     useOfflineRuntime();
@@ -77,6 +81,11 @@ function RuntimeServices() {
 function MainAppShell() {
     const [mounted, setMounted] = useState(false);
     const [isFareSelectorOpen, setIsFareSelectorOpen] = useState(false);
+    const [fareSelectorStep, setFareSelectorStep] = useState<'TYPE' | 'DESTINATION'>('TYPE');
+    const openFareSelector = (step: 'TYPE' | 'DESTINATION' = 'TYPE') => {
+        setFareSelectorStep(step);
+        setIsFareSelectorOpen(true);
+    };
     const [isMapBlurred, setIsMapBlurred] = useState(false); // Map Blur State
 
     const isOpen = useOperatingHours();
@@ -88,15 +97,31 @@ function MainAppShell() {
         showRushHour, toggleShowRushHour, darkModeOverride, setDarkMode,
         notificationPreference, setNotificationPreference,
         maintenanceMode,
+        pendingTripRecovery,
+        pendingCompletedTrip,
         line7Mode,
         transitMode,
         setTransitMode
-    } = useTripStore();
+    } = useTripStore(useShallow((state) => ({
+        isDevMode: state.isDevMode, isGpsOverride: state.isGpsOverride,
+        status: state.status, origin: state.origin, ticketType: state.ticketType, destination: state.destination,
+        direction: state.direction, runningFare: state.runningFare, nextStation: state.nextStation, currentStation: state.currentStation,
+        isDarkMode: state.isDarkMode, toggleDarkMode: state.toggleDarkMode,
+        showRushHour: state.showRushHour, toggleShowRushHour: state.toggleShowRushHour,
+        darkModeOverride: state.darkModeOverride, setDarkMode: state.setDarkMode,
+        notificationPreference: state.notificationPreference, setNotificationPreference: state.setNotificationPreference,
+        maintenanceMode: state.maintenanceMode, pendingTripRecovery: state.pendingTripRecovery,
+        pendingCompletedTrip: state.pendingCompletedTrip, line7Mode: state.line7Mode,
+        transitMode: state.transitMode, setTransitMode: state.setTransitMode,
+    })));
     const isBusSandboxEnabled = isDevMode;
     const isBusMode = isBusSandboxEnabled && transitMode === 'bus';
 
     // Train Tracking
-    const { spectatorMode, toggleSpectatorMode, crowdConsent, setCrowdConsent, isBroadcasting } = useTrainStore();
+    const { spectatorMode, toggleSpectatorMode, crowdConsent, setCrowdConsent, isBroadcasting } = useTrainStore(useShallow((state) => ({
+        spectatorMode: state.spectatorMode, toggleSpectatorMode: state.toggleSpectatorMode,
+        crowdConsent: state.crowdConsent, setCrowdConsent: state.setCrowdConsent, isBroadcasting: state.isBroadcasting,
+    })));
 
     // Hamburger menu state
     const [menuOpen, setMenuOpen] = useState(false);
@@ -124,7 +149,7 @@ function MainAppShell() {
     const [tripHistoryOpen, setTripHistoryOpen] = useState(false);
 
     // Trip History
-    const { recentTrips, allTrips, stats: tripStats, loading: tripHistoryLoading, fetchAllTrips, saveTrip } = useTripHistory();
+    const { recentTrips, allTrips, stats: tripStats, loading: tripHistoryLoading, error: tripHistoryError, totalsAvailable, fetchAllTrips, saveTrip } = useTripHistory();
 
     // Auto-save trip when status transitions to ARRIVED
     // Uses Zustand subscribe (synchronous) instead of useEffect (async/deferred)
@@ -134,34 +159,27 @@ function MainAppShell() {
 
     useEffect(() => {
         const unsub = useTripStore.subscribe((state, prev) => {
-            if (state.status !== 'ARRIVED' || prev.status === 'ARRIVED') return;
+            if (state.status !== 'ARRIVED' || prev.status === 'ARRIVED' || state.isDevMode) return;
 
             // State is captured synchronously — origin/dest are still set
             const tripOrigin = state.origin;
             const tripDest = state.destination || state.currentStation;
             const ticket = state.ticketType || (state.origin?.lineId === 'EDSA' ? 'BUS_REGULAR' : 'SJT');
 
-            console.log('[TripSave] ARRIVED transition detected', {
-                origin: tripOrigin?.name,
-                dest: tripDest?.name,
-                ticketType: state.ticketType,
-                fare: state.runningFare,
-                direction: state.direction,
-                tripStartedAt: state.tripStartedAt,
-            });
-
             if (!tripOrigin || !tripDest) {
                 console.warn('[TripSave] ❌ Missing origin or dest — skipping save');
                 return;
             }
 
-            const distKm = (state.journeySnapshot.route?.totalDistanceMeters ?? 0) / 1000;
-            const clientTripId = `tt-${state.tripStartedAt ?? Date.now()}-${tripOrigin.id}-${tripDest.id}`;
-            const durationMins = state.tripStartedAt
-                ? Math.round((Date.now() - state.tripStartedAt) / 60000)
+            const snapshot = state.journeySnapshot;
+            const distKm = snapshot.completedDistanceMeters / 1000;
+            const clientTripId = snapshot.tripId ?? `tt-${state.tripStartedAt ?? Date.now()}-${tripOrigin.id}-${tripDest.id}`;
+            const durationMins = snapshot.startedAt != null && snapshot.completedAt != null
+                ? Math.max(0, Math.round((snapshot.completedAt - snapshot.startedAt) / 60000))
                 : null;
 
-            saveTripRef.current({
+            const draft: TripWrite & Record<string, unknown> = {
+                ownerId: state.tripOwnerId,
                 client_trip_id: clientTripId,
                 origin_id: tripOrigin.id,
                 origin_name: tripOrigin.name,
@@ -172,14 +190,35 @@ function MainAppShell() {
                 ticket_type: ticket,
                 fare: state.runningFare,
                 distance_km: Math.round(distKm * 100) / 100,
-                direction: state.direction,
+                direction: getJourneyEntryDirection(snapshot.route),
                 duration_minutes: durationMins,
-                started_at: state.tripStartedAt
-                    ? new Date(state.tripStartedAt).toISOString()
+                started_at: snapshot.startedAt != null
+                    ? new Date(snapshot.startedAt).toISOString()
                     : new Date().toISOString(),
+                completed_at: snapshot.completedAt != null ? new Date(snapshot.completedAt).toISOString() : undefined,
+            };
+            state.retainCompletedTrip(draft);
+            void saveTripRef.current(draft).then(() => {
+                const current = useTripStore.getState();
+                if (current.pendingCompletedTrip === draft) current.acknowledgeCompletedTrip();
+            }).catch((error: unknown) => {
+                const current = useTripStore.getState();
+                if (current.pendingCompletedTrip === draft) {
+                    current.setHistorySaveFailure(error instanceof Error ? error.message : 'Trip history could not be retained.');
+                }
             });
         });
         return unsub;
+    }, []);
+
+    useEffect(() => {
+        const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+            if (!useTripStore.getState().pendingCompletedTrip) return;
+            event.preventDefault();
+            event.returnValue = '';
+        };
+        window.addEventListener('beforeunload', warnBeforeUnload);
+        return () => window.removeEventListener('beforeunload', warnBeforeUnload);
     }, []);
 
     // Auto-open profile setup for new users (needsSetup is gated by !loading in useAuth)
@@ -236,17 +275,18 @@ function MainAppShell() {
         locationStatus,
         requestLocation,
     } = useGatekeeper();
-    const { setOrigin } = useTripStore();
+    const setOrigin = useTripStore((state) => state.setOrigin);
 
     // Logic Hook
     const {
-        statusText, statusCode, displayStation, legProgress, totalProgress,
+        statusText, statusCode, displayStation, legProgress, railLegProgress, totalProgress,
         visualPrev, visualNext, stopsRemaining, distanceToNext, distanceToDest,
         stopsToTransfer, stopsAfterTransfer, nextLegLineId, gpsFallbackActive,
         isTransferActive, transferFrom, transferTo, transferEdge, transferTargetLineId,
         transferInstruction, transferRouteDescription, transferTargetCoordinates,
         transferDistanceMeters, transferTurnDirection
     } = useTripLogic();
+    const hasNavRoute = useTripStore((state) => (state.journeySnapshot.route?.totalTransferCount ?? 0) > 0);
 
 
     // Notifications Hook
@@ -262,10 +302,11 @@ function MainAppShell() {
 
     // Auto-open FareSelector if origin is set but no ticket
     useEffect(() => {
-        if (origin && !ticketType && !isFareSelectorOpen && status === 'IDLE') {
+        if (origin && !ticketType && status === 'IDLE') {
+            setFareSelectorStep('TYPE');
             setIsFareSelectorOpen(true);
         }
-    }, [origin, ticketType, isFareSelectorOpen, status]);
+    }, [origin?.id, ticketType, status]);
 
     // If not mounted (client hydration not done), show Full Screen Black Loader to prevent White Flash
     if (!mounted) {
@@ -281,17 +322,18 @@ function MainAppShell() {
     })();
 
     // Show Holy Week Screen (highest priority, non-dev users only)
-    if (isHolyWeek && !isDevMode) {
+    const hasJourneyToPreserve = status !== 'IDLE' || Boolean(pendingTripRecovery || pendingCompletedTrip);
+    if (isHolyWeek && !isDevMode && !hasJourneyToPreserve) {
         return <HolyWeekScreen />;
     }
 
     // Show Maintenance Screen (non-dev users only)
-    if (maintenanceMode && !isDevMode) {
+    if (maintenanceMode && !isDevMode && !hasJourneyToPreserve) {
         return <MaintenanceScreen />;
     }
 
     // Show Closed Screen if outside operating hours (and not in dev mode)
-    if (!isOpen && !isBusMode) {
+    if (!isOpen && !isBusMode && !isDevMode && !hasJourneyToPreserve) {
         return <ClosedScreen />;
     }
 
@@ -316,12 +358,14 @@ function MainAppShell() {
                         onClick={() => setMenuOpen(!menuOpen)}
                         className="flex items-center justify-center bg-black/80 text-white p-3 rounded-full border border-zinc-800 shadow-xl transition-all hover:scale-105 active:scale-95"
                         aria-label="Settings Menu"
+                        aria-expanded={menuOpen}
+                        aria-controls="traintracks-settings"
                     >
                         <Settings className={`w-6 h-6 text-white/80 transition-transform duration-500 ${menuOpen ? 'rotate-90' : ''}`} />
                     </button>
 
                     {menuOpen && (
-                        <div className="absolute left-0 mt-2 w-52 bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-3 space-y-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div id="traintracks-settings" onKeyDown={(event) => { if (event.key === 'Escape') { setMenuOpen(false); event.currentTarget.parentElement?.querySelector('button')?.focus(); } }} className="absolute left-0 mt-2 w-52 bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-3 space-y-1 animate-in fade-in slide-in-from-top-2 duration-200">
                             <button
                                 onClick={toggleDarkMode}
                                 aria-label={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
@@ -401,8 +445,9 @@ function MainAppShell() {
                                             notificationPreference === 'destination' ? 'DEST' : 'OFF'}
                                 </span>
                             </button>
-
-
+                            <p className="px-3 text-[9px] text-white/60">
+                                Map: <a className="underline" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> / <a className="underline" href="https://carto.com/attribution/" target="_blank" rel="noopener noreferrer">CARTO</a>
+                            </p>
                         </div>
                     )}
                 </div>
@@ -589,27 +634,23 @@ function MainAppShell() {
                             <>
                                 <WrongDirectionAlert
                                     onUpdateOrigin={() => {
-                                        console.log("🔘 WrongDirectionAlert: 'I'm at [Station]' clicked");
                                         try {
                                             const { updateOriginKeepTrip } = useTripStore.getState();
                                             const location = useLocationStore.getState().sample?.location ?? null;
                                             // Find nearest station
                                             if (location) {
-                                                console.log("📍 Location found:", location);
                                                 const closest = getStationProximity({
                                                     location,
                                                     mode: getOperationalMode(isDevMode, line7Mode),
                                                     line7Mode,
                                                     transitMode: isBusMode ? 'bus' : 'train',
                                                 }).closest?.station ?? null;
-                                                console.log("🚉 Nearest station found:", closest?.name);
-                                                // Trip-safe: preserves destination + status + direction
+                                                // The store amends the remaining route without changing boarding.
                                                 if (closest) {
                                                     updateOriginKeepTrip(closest);
-                                                    console.log("✅ Origin updated via updateOriginKeepTrip");
                                                 }
                                             } else {
-                                                console.error("❌ Location is null during 'I'm at [Station]' click");
+                                                console.error('Reroute unavailable without a trusted location.');
                                             }
                                         } catch (err) {
                                             console.error("💥 Error in onUpdateOrigin:", err);
@@ -620,7 +661,7 @@ function MainAppShell() {
                                         try {
                                             const { updateOriginKeepTrip } = useTripStore.getState();
                                             const location = useLocationStore.getState().sample?.location ?? null;
-                                            // Find nearest station and update origin (trip-safe)
+                                            // Keep the original boarding station while amending the remaining route.
                                             if (location) {
                                                 const closest = getStationProximity({
                                                     location,
@@ -632,7 +673,7 @@ function MainAppShell() {
                                             }
                                             // Don't null destination — let fare selector handle it
                                             // Old destination stays as fallback if user dismisses
-                                            setIsFareSelectorOpen(true);
+                                            openFareSelector('DESTINATION');
                                         } catch (err) {
                                             console.error("💥 Error in onChangeDestination:", err);
                                         }
@@ -663,10 +704,10 @@ function MainAppShell() {
                                         ticketType={ticketType}
                                         direction={direction}
                                         runningFare={runningFare}
-                                        onTicketClick={() => setIsFareSelectorOpen(true)}
+                                        onTicketClick={() => openFareSelector()}
                                         nextStation={visualNext}
                                         prevStation={visualPrev}
-                                        progress={legProgress}
+                                        progress={hasNavRoute || isTransferActive ? railLegProgress : legProgress}
                                         statusText={statusText}
                                         displayStation={displayStation}
                                         isTransferActive={isTransferActive}
@@ -684,10 +725,10 @@ function MainAppShell() {
                                             onRequestLocation: requestLocation,
                                             onRide: (station) => {
                                                 setOrigin(station);
-                                                setIsFareSelectorOpen(true);
+                                                openFareSelector();
                                             }
                                         }}
-                                        onManualEntry={isDevMode ? () => setIsFareSelectorOpen(true) : undefined}
+                                        onManualEntry={isDevMode ? () => openFareSelector() : undefined}
                                     />
 
                                     {/* Upcoming Trains — between TicketCard and TripProgress */}
@@ -710,6 +751,7 @@ function MainAppShell() {
                                             destination={destination}
                                             ticketType={ticketType}
                                             runningFare={runningFare}
+                                            onTicketClick={() => openFareSelector()}
                                             stopsRemaining={stopsRemaining}
                                             statusText={statusText}
                                             statusCode={statusCode}
@@ -745,6 +787,8 @@ function MainAppShell() {
                                 <ErrorBoundary>
                                     <RecentTripsCard
                                         trips={recentTrips}
+                                        loading={tripHistoryLoading}
+                                        error={tripHistoryError}
                                         onViewAll={() => setTripHistoryOpen(true)}
                                     />
                                 </ErrorBoundary>
@@ -756,7 +800,7 @@ function MainAppShell() {
 
                 {/* Modals - Rendered OUTSIDE the scroll container to prevent overflow clipping */}
                 <ErrorBoundary>
-                    <FareSelector open={isFareSelectorOpen} onOpenChange={setIsFareSelectorOpen} />
+                    <FareSelector open={isFareSelectorOpen} onOpenChange={setIsFareSelectorOpen} initialStep={fareSelectorStep} />
                     <WelcomeScreen />
                     <JourneySafetyReminders />
                 </ErrorBoundary>
@@ -938,6 +982,8 @@ function MainAppShell() {
                     trips={allTrips}
                     stats={tripStats}
                     loading={tripHistoryLoading}
+                    error={tripHistoryError}
+                    totalsAvailable={totalsAvailable}
                     onLoad={fetchAllTrips}
                 />
             </main>

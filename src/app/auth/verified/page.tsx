@@ -2,8 +2,16 @@
 
 import { TrainFront, CheckCircle2, Sparkles, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function VerifiedPage() {
+    const { user, loading } = useAuth();
+    if (loading || !user?.email_confirmed_at) return (
+        <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 gap-4">
+            <p>{loading ? 'Checking verification...' : 'No verified session. Sign in to continue.'}</p>
+            {!loading && <Link href="/login">Sign In</Link>}
+        </div>
+    );
     return (
         <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
             {/* Ambient background glow */}

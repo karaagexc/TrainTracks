@@ -110,6 +110,14 @@ export function sanitizeCrowdPresencePayload(
     if (!isRecord(payload)) {
         return errorResult(400, 'invalid_payload', 'Crowd presence payload must be an object.');
     }
+    if ((payload.locationSource !== undefined && payload.locationSource !== 'gps')
+        || (payload.source !== undefined && payload.source !== 'crowd' && payload.source !== 'gps')) {
+        return errorResult(422, 'invalid_payload', 'Only observed GPS samples may be published.');
+    }
+    const observedAt = readNumber(payload.updatedAt);
+    if (observedAt === null || observedAt > now + 5000 || observedAt < now - 45_000) {
+        return errorResult(422, 'invalid_payload', 'Crowd GPS sample is stale or future-dated.');
+    }
 
     const deviceId = readString(payload.deviceId);
     if (!deviceId || deviceId.length < 8 || deviceId.length > 128) {
@@ -168,7 +176,7 @@ export function sanitizeCrowdPresencePayload(
     const speedKph = clamp(readNumber(payload.speedKph) ?? 0, 0, 120);
     const pseudonym = options.pseudonym ?? fallbackPseudonym(deviceId);
     const sampleId = readString(payload.sampleId)?.slice(0, 128)
-        ?? `${pseudonym}-${now}`;
+        ?? `${pseudonym}-${observedAt}`;
     const accuracyScore = 1 - Math.min(1, accuracyMeters / MAX_ACCURACY_METERS);
     const corridorScore = 1 - Math.min(1, trackDistanceMeters / MAX_CORRIDOR_DISTANCE_METERS);
     const motionScore = speedKph <= 100 ? 1 : 0.6;
@@ -198,7 +206,8 @@ export function sanitizeCrowdPresencePayload(
             stationId: station?.id ?? null,
             stationName: station?.name ?? null,
             source: 'crowd',
-            updatedAt: now,
+            updatedAt: observedAt,
+            validUntil: observedAt + 45_000,
             confidence,
             sourceCount: 1,
         },

@@ -1,14 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { CopyX, Smartphone, Tablet, Cookie } from "lucide-react";
 import { useTripStore } from "@/store/useTripStore";
-
-const DEVTOOLS_GAP_PX = 160;
-const DEVTOOLS_TIMING_MS = 120;
-const POLL_MIN_MS = 3000;
-const POLL_MAX_MS = 5000;
 
 function isHandheldDevice(): boolean {
     if (typeof window === "undefined") return true;
@@ -22,28 +17,6 @@ function isHandheldDevice(): boolean {
     return isMobile || isTablet || (hasTouch && smallScreen);
 }
 
-function nextPollDelay() {
-    return POLL_MIN_MS + Math.floor(Math.random() * (POLL_MAX_MS - POLL_MIN_MS + 1));
-}
-
-function isDevtoolsLikelyOpen(): boolean {
-    const widthGap = Math.abs(window.outerWidth - window.innerWidth);
-    const heightGap = Math.abs(window.outerHeight - window.innerHeight);
-
-    if (widthGap > DEVTOOLS_GAP_PX || heightGap > DEVTOOLS_GAP_PX) {
-        return true;
-    }
-
-    try {
-        const start = performance.now();
-        const probe = new Function("debugger;");
-        probe();
-        return performance.now() - start > DEVTOOLS_TIMING_MS;
-    } catch {
-        return false;
-    }
-}
-
 export function SecurityGuard() {
     const pathname = usePathname();
     const { isDevMode } = useTripStore();
@@ -52,12 +25,6 @@ export function SecurityGuard() {
 
     const [isAllowedDevice, setIsAllowedDevice] = useState(true);
     const [cookiesEnabled, setCookiesEnabled] = useState(true);
-    const [isSecurityLocked, setIsSecurityLocked] = useState(false);
-
-    const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const recoveryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const lockedRef = useRef(false);
-
     useEffect(() => {
         if (!isProduction || isAdmin) return;
 
@@ -86,92 +53,39 @@ export function SecurityGuard() {
             }
         };
 
-        const lockApplication = () => {
-            if (lockedRef.current) return;
-            lockedRef.current = true;
-
-            if (pollTimeoutRef.current) {
-                clearTimeout(pollTimeoutRef.current);
-                pollTimeoutRef.current = null;
-            }
-
-            setIsSecurityLocked(true);
-
-            recoveryIntervalRef.current = setInterval(() => {
-                if (!isDevtoolsLikelyOpen()) {
-                    if (recoveryIntervalRef.current) {
-                        clearInterval(recoveryIntervalRef.current);
-                        recoveryIntervalRef.current = null;
-                    }
-
-                    window.location.reload();
-                }
-            }, 1000);
-        };
-
-        const scheduleProbe = () => {
-            if (lockedRef.current) return;
-
-            if (isDevtoolsLikelyOpen()) {
-                lockApplication();
-                return;
-            }
-
-            pollTimeoutRef.current = setTimeout(scheduleProbe, nextPollDelay());
-        };
-
         refreshChecks();
         window.addEventListener("resize", refreshChecks);
 
         document.addEventListener("contextmenu", preventContextMenu);
         document.addEventListener("keydown", preventKeyShortcuts, true);
 
-        scheduleProbe();
-
         return () => {
             window.removeEventListener("resize", refreshChecks);
             document.removeEventListener("contextmenu", preventContextMenu);
             document.removeEventListener("keydown", preventKeyShortcuts, true);
 
-            if (pollTimeoutRef.current) {
-                clearTimeout(pollTimeoutRef.current);
-                pollTimeoutRef.current = null;
-            }
-
-            if (recoveryIntervalRef.current) {
-                clearInterval(recoveryIntervalRef.current);
-                recoveryIntervalRef.current = null;
-            }
-
-            lockedRef.current = false;
-            setIsSecurityLocked(false);
         };
     }, [isAdmin, isProduction]);
 
+    const devicePolicyBlocked = isProduction && !isAdmin && (!isAllowedDevice || !cookiesEnabled);
+    useEffect(() => {
+        if (!devicePolicyBlocked) return;
+        const appRoot = document.getElementById('traintracks-app-root');
+        if (!appRoot) return;
+        const previousInert = appRoot.inert;
+        const previousAriaHidden = appRoot.getAttribute('aria-hidden');
+        const activeControl = document.activeElement;
+        if (activeControl instanceof HTMLElement && appRoot.contains(activeControl)) activeControl.blur();
+        appRoot.inert = true;
+        appRoot.setAttribute('aria-hidden', 'true');
+        return () => {
+            appRoot.inert = previousInert;
+            if (previousAriaHidden === null) appRoot.removeAttribute('aria-hidden');
+            else appRoot.setAttribute('aria-hidden', previousAriaHidden);
+        };
+    }, [devicePolicyBlocked]);
+
     if (isAdmin || !isProduction) return null;
-
-    if (isSecurityLocked) {
-        return (
-            <div className="fixed inset-0 z-[2147483647] bg-black text-white flex flex-col items-center justify-center p-8 text-center space-y-8 cursor-not-allowed">
-                <div className="relative">
-                    <div className="absolute inset-[-32px] bg-red-500/20 blur-3xl rounded-full" />
-                    <CopyX className="w-24 h-24 text-red-500 relative z-10 animate-pulse" />
-                </div>
-
-                <h1 className="text-4xl font-black tracking-tighter uppercase relative z-10">
-                    Access Blocked
-                </h1>
-
-                <p className="text-zinc-400 max-w-md text-lg relative z-10">
-                    Close restricted browser tools and reload the page to continue.
-                </p>
-
-                <div className="absolute bottom-8 text-xs text-zinc-700 font-mono">
-                    ERROR_SECURITY_LOCK
-                </div>
-            </div>
-        );
-    }
 
     if (!isAllowedDevice) {
         return (

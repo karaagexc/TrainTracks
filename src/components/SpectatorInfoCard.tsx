@@ -22,13 +22,14 @@ import { getNetworkStations, getLineStations, getOperationalMode, getTerminusLab
 import { getSegmentTime } from '@/data/segmentDistances';
 import { useMinuteClock } from '@/hooks/useMinuteClock';
 import { StationInfoModal } from '@/components/StationInfoModal';
+import { platformTrains, platformEmptyMessage, formatForecastEta } from './platformForecasts';
 
 const BADGE_STATIONS = getNetworkStations('sandbox', 'WITH_NA');
 
 function sourceMeta(train: TrainPresence) {
     switch (train.source) {
         case 'predicted':
-            return { label: 'Predicted', className: 'bg-blue-500/20 text-blue-400' };
+            return { label: 'Forecast', className: 'bg-blue-500/20 text-blue-400' };
         case 'crowd':
             return { label: 'Crowdsourced', className: 'bg-cyan-500/20 text-cyan-400' };
         case 'simulated':
@@ -52,11 +53,6 @@ function lineGradient(lineId: LineId | null) {
     return lineId === 'LRT1' ? 'from-green-500' :
         lineId === 'LRT2' ? 'from-purple-500' :
             lineId === 'MRT7' ? 'from-mrt7' : 'from-yellow-500';
-}
-
-function truthRank(train: TrainPresence): number {
-    if (train.source === 'operator' || train.source === 'crowd' || train.source === 'simulated') return 0;
-    return 1;
 }
 
 function getTrainLocationLabel(train: TrainPresence): string {
@@ -154,6 +150,10 @@ function FormatStatusDisplay({ train, className }: { train: TrainPresence; class
 
 export function SpectatorInfoCard() {
     const trains = useTrainStore((s) => s.trains);
+    const forecasts = useTrainStore((s) => s.stationForecasts);
+    const predictionState = useTrainStore((s) => s.predictionState);
+    const predictionError = useTrainStore((s) => s.predictionError);
+    const predictionSnapshots = useTrainStore((s) => s.predictionSnapshots);
     const selectedTrainId = useTrainStore((s) => s.selectedTrainId);
     const selectedStationCode = useTrainStore((s) => s.selectedStationCode);
     const followedTrainId = useTrainStore((s) => s.followedTrainId);
@@ -187,27 +187,8 @@ export function SpectatorInfoCard() {
 
     const upcomingAtStation = useMemo(() => {
         if (!selectedStation || !stationLineStations.length) return [];
-        return trains
-            .filter((train) => {
-                if (train.lineId !== selectedStation.lineId) return false;
-                if (train.predictionScope === 'station') return false;
-                if (!train.stationId) return false;
-
-                const trainStation = stationLineStations.find((s) => s.id === train.stationId);
-                if (!trainStation) return false;
-
-                const forward = isForwardDirection(train.direction);
-                if (forward) return trainStation.order <= selectedStation.order;
-                return trainStation.order >= selectedStation.order;
-            })
-            .sort((left, right) => {
-                const leftStation = stationLineStations.find((s) => s.id === left.stationId);
-                const rightStation = stationLineStations.find((s) => s.id === right.stationId);
-                const leftDist = Math.abs((leftStation?.order ?? 0) - selectedStation.order);
-                const rightDist = Math.abs((rightStation?.order ?? 0) - selectedStation.order);
-                return truthRank(left) - truthRank(right) || leftDist - rightDist || right.confidence - left.confidence;
-            });
-    }, [trains, selectedStation, stationLineStations]);
+        return platformTrains(trains, forecasts, selectedStation, stationLineStations);
+    }, [trains, forecasts, selectedStation, stationLineStations]);
 
     const trainsAtStation = useMemo(() => {
         if (!selectedStation) return [];
@@ -264,7 +245,7 @@ export function SpectatorInfoCard() {
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
                     <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                     <span className="text-[10px] font-bold text-white/60 uppercase tracking-wider">
-                        {trains.length} trains active
+                        {trains.filter((train) => train.predictionScope !== 'station').length} map signals
                     </span>
                 </div>
             </div>
@@ -348,6 +329,7 @@ export function SpectatorInfoCard() {
 
                 <button
                     onClick={() => selectTrain(null)}
+                    aria-label="Close train details"
                     className="absolute top-4 right-4 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/50 hover:bg-white/20 hover:text-white transition-all"
                 >
                     x
@@ -410,8 +392,11 @@ export function SpectatorInfoCard() {
 
                 <div className="px-5 pb-4">
                     <div className="mb-2 flex items-center justify-between gap-3">
-                        <div className="text-[10px] text-white/50 font-bold uppercase tracking-widest">
-                            Upcoming Trains
+                        <div className="text-[10px] text-white/50 font-bold uppercase tracking-widest" role="status" title={predictionError ?? undefined}>
+                            {predictionState === 'offline' ? 'Offline Forecasts'
+                                : predictionState === 'error' ? 'Estimates Unavailable'
+                                : predictionState === 'stale' ? 'Stale Estimates'
+                                : predictionState === 'loading' ? 'Loading Estimates' : 'Upcoming Trains'}
                         </div>
                         {upcomingAtStation.length > 0 && (
                             <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white/45">
@@ -422,7 +407,7 @@ export function SpectatorInfoCard() {
                     {upcomingAtStation.length === 0 ? (
                         <div className="p-4 rounded-xl bg-black/20 border border-white/5 text-center space-y-1">
                             <Train className="w-5 h-5 text-white/20 mx-auto" />
-                            <p className="text-xs text-white/40">No trains approaching</p>
+                            <p className="text-xs text-white/40" role="status">{platformEmptyMessage(predictionState, predictionError, predictionSnapshots, selectedStation.id)}</p>
                         </div>
                     ) : (
                         <div className="space-y-2">
@@ -431,12 +416,14 @@ export function SpectatorInfoCard() {
                                 const freshness = freshnessMeta(train);
                                 const isStale = train.freshness === 'stale';
                                 const approach = selectedStation ? estimateEtaToStation(train.stationId, selectedStation.id, stationLineStations, train.direction) : null;
-                                const etaDisplay = approach ? `ETA ${formatApproachEta(approach.etaSeconds, approach.stopsAway)}` : getTrainSpeedLabel(train);
-                                const stopsLabel = approach && approach.stopsAway > 0 ? `${approach.stopsAway} stop${approach.stopsAway > 1 ? 's' : ''} away` : 'at station';
+                                const isForecast = train.predictionScope === 'station';
+                                const etaDisplay = isForecast ? formatForecastEta(train) : approach ? `ETA ${formatApproachEta(approach.etaSeconds, approach.stopsAway)}` : getTrainSpeedLabel(train);
+                                const stopsLabel = isForecast ? 'platform forecast' : approach && approach.stopsAway > 0 ? `${approach.stopsAway} stop${approach.stopsAway > 1 ? 's' : ''} away` : 'at station';
                                 return (
                                     <button
                                         key={train.id}
-                                        onClick={() => selectTrain(train.id)}
+                                        onClick={() => { if (!isForecast) selectTrain(train.id); }}
+                                        aria-label={isForecast ? `${selectedStation.name}: ${etaDisplay}` : undefined}
                                         className={cn(
                                             "w-full flex items-center gap-3 p-3 rounded-xl bg-black/20 border border-white/5 hover:bg-white/5 transition-all group text-left",
                                             isStale && "opacity-75"
@@ -448,7 +435,7 @@ export function SpectatorInfoCard() {
                                                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/40 border border-white/5">
                                                     <div className={cn("w-1.5 h-1.5 rounded-full", freshness.dot, !isStale && "animate-pulse")} />
                                                     <span className={cn("text-[9px] font-bold uppercase tracking-wider", freshness.className.split(' ')[1])}>
-                                                        {getTrainStatusLabel(train)}
+                                                        {isForecast ? 'Forecast' : getTrainStatusLabel(train)}
                                                     </span>
                                                 </div>
                                                 <span className="px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[8px] font-bold text-white/40 uppercase tracking-wider">
@@ -490,6 +477,7 @@ export function SpectatorInfoCard() {
 
                 <button
                     onClick={() => selectStation(null)}
+                    aria-label="Close station details"
                     className="absolute top-4 right-4 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/50 hover:bg-white/20 hover:text-white transition-all"
                 >
                     x

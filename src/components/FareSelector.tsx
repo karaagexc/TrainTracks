@@ -9,14 +9,17 @@ import { getPrecisionFare } from "@/utils/fareNew";
 import { cn } from "@/lib/utils";
 import { getDirectionForStations, getNetworkStations, getOperationalMode } from "@/domain/railway";
 import type { TicketType } from "@/types";
+import * as Dialog from "@radix-ui/react-dialog";
 
 interface Props {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    initialStep?: 'TYPE' | 'DESTINATION';
 }
 
-export function FareSelector({ open, onOpenChange }: Props) {
-    const { setTicketType, startTrip, destination, setDestination, origin, setOrigin, setDirection, ticketType } = useTripStore();
+export function FareSelector({ open, onOpenChange, initialStep = 'TYPE' }: Props) {
+    const { setTicketType, beginTrip, amendTrip, status, destination, setDestination, origin, setOrigin, setDirection, ticketType } = useTripStore();
+    const returnFocusRef = useRef<HTMLElement | null>(null);
     const line7Mode = useTripStore(s => s.line7Mode);
     const isDevMode = useTripStore(s => s.isDevMode);
     const rawTransitMode = useTripStore(s => s.transitMode);
@@ -34,12 +37,10 @@ export function FareSelector({ open, onOpenChange }: Props) {
             if (!origin) {
                 setStep('ORIGIN');
             } else {
-                setStep('TYPE');
+                setStep(initialStep);
             }
-            document.body.style.overflow = 'hidden';
-            return () => { document.body.style.overflow = ''; };
         }
-    }, [open, origin]);
+    }, [open, origin, initialStep]);
 
     // Dynamic Badge Cycle
     useEffect(() => {
@@ -59,18 +60,27 @@ export function FareSelector({ open, onOpenChange }: Props) {
     const handleSelectType = (type: TicketType) => {
         // ALWAYS go to destination picker for better UX (Fare Estimate & Tracking)
         if (!destination) {
-            setTicketType(type); // Set type first
+            if (status !== 'IDLE') amendTrip({ ticketType: type });
+            else setTicketType(type);
             setStep('DESTINATION'); // Then go to picker
             return;
         }
 
-        // If destination already set (e.g. from previous), just update type and start
-        setTicketType(type);
-        startTrip();
+        if (status !== 'IDLE') {
+            amendTrip({ ticketType: type });
+        } else {
+            setTicketType(type);
+            beginTrip();
+        }
         onOpenChange(false);
     };
 
     const handleSelectDestination = (station: any) => {
+        if (status !== 'IDLE') {
+            amendTrip({ destination: station });
+            onOpenChange(false);
+            return;
+        }
         setDestination(station);
 
         // Infer Direction from station ORDER, not lat/lon.
@@ -86,13 +96,25 @@ export function FareSelector({ open, onOpenChange }: Props) {
             }
         }
 
-        startTrip();
+        beginTrip();
         onOpenChange(false);
     };
 
     return (
+        <Dialog.Root open={open} onOpenChange={onOpenChange}>
+        <Dialog.Portal>
+        <Dialog.Overlay asChild>
         <div className="fixed inset-0 z-[60] flex items-center justify-center px-8 py-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="w-full max-w-xs md:max-w-sm bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl relative animate-in zoom-in-95 duration-300 flex flex-col max-h-[80vh]">
+            <Dialog.Content
+                aria-label={step === 'ORIGIN' ? 'Select Origin' : step === 'TYPE' ? 'Select Fare Type' : 'Select Destination'}
+                aria-describedby={undefined}
+                onOpenAutoFocus={() => { returnFocusRef.current = document.activeElement as HTMLElement | null; }}
+                onCloseAutoFocus={(event) => {
+                    event.preventDefault();
+                    returnFocusRef.current?.focus();
+                }}
+                className="w-full max-w-xs md:max-w-sm bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl relative animate-in zoom-in-95 duration-300 flex flex-col max-h-[80vh]">
+                <Dialog.Title className="sr-only">{step === 'ORIGIN' ? 'Select Origin' : step === 'TYPE' ? 'Select Fare Type' : 'Select Destination'}</Dialog.Title>
 
                 {/* STEP 0: ORIGIN PICKER (For Mid-Trip / Manual Start) */}
                 {step === 'ORIGIN' && (
@@ -241,6 +263,7 @@ export function FareSelector({ open, onOpenChange }: Props) {
                         <div className="flex items-center gap-4 mb-6 flex-shrink-0 relative">
                             <button
                                 onClick={() => setStep('TYPE')}
+                                aria-label="Back to fare type"
                                 className="p-2 rounded-full bg-zinc-800 hover:bg-zinc-700 text-white/70 hover:text-white transition-colors absolute left-0"
                             >
                                 <ChevronLeft className="w-5 h-5" />
@@ -280,8 +303,11 @@ export function FareSelector({ open, onOpenChange }: Props) {
                     </div>
                 )}
 
-            </div>
+            </Dialog.Content>
         </div >
+        </Dialog.Overlay>
+        </Dialog.Portal>
+        </Dialog.Root>
     );
 }
 

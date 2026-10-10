@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPredictionApiAccess } from '@/domain/predictions/apiAccess';
-import { getPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
+import { getPublicApiHeaders, getConfiguredPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
 import { getTimeMultiplier, isRushHourWindow } from '@/data/congestion';
 import { getManilaDateParts, getManilaDaypart, parseManilaTimestamp } from '@/domain/time/manila';
 
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function OPTIONS(request: NextRequest) {
     return new Response(null, {
         status: 204,
-        headers: getPublicApiHeaders(request),
+        headers: await getConfiguredPublicApiHeaders(request),
     });
 }
 

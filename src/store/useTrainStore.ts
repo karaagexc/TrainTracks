@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { CrowdPresenceConsent } from '@/types';
 import { TrainPresence } from '@/types/train';
+import type { PredictedTrain } from '@/domain/predictions/engine';
+import type { PredictionConnectionState, PredictionSnapshot } from '@/domain/predictions/snapshot';
+import { API_CONFIG_DEFAULTS, type ApiConfig, type ConfigLoadResult } from '@/domain/config';
 import {
     buildStationDwellSnapshot,
     clusterTrainPresence,
@@ -23,6 +26,21 @@ interface TrainStore {
     lastPollTimestamp: number;
     isPolling: boolean;
     error: string | null;
+    predictionSnapshots: PredictionSnapshot[];
+    predictionContext: number;
+    predictionRevision: number;
+    predictionState: PredictionConnectionState;
+    predictionError: string | null;
+    predictionLastReceivedAt: number;
+    stationForecasts: TrainPresence[];
+    offlineForecasts: PredictedTrain[];
+    realtimeStatus: string;
+    realtimeError: string | null;
+    crowdSnapshotReceivedAt: number;
+    apiConfig: ApiConfig;
+    runtimeConfigState: ConfigLoadResult['status'] | 'loading';
+    runtimeConfigError: string | null;
+    setRuntimeApiConfig: (result: ConfigLoadResult) => void;
     mockTrainsMode: boolean;
     timeFactor: number;
     isBroadcasting: boolean;
@@ -31,6 +49,12 @@ interface TrainStore {
     crowdConsent: CrowdPresenceConsent;
     setTrains: (trains: TrainPresence[]) => void;
     setPredictedTrains: (trains: TrainPresence[]) => void;
+    beginPredictionContext: () => number;
+    setPredictionSnapshots: (context: number, snapshots: PredictionSnapshot[]) => void;
+    setPredictionState: (state: PredictionConnectionState, error?: string | null) => void;
+    setOfflineForecasts: (context: number, forecasts: PredictedTrain[], revision: number) => void;
+    setRealtimeStatus: (status: string, error?: string | null) => void;
+    reconcileCrowdSnapshot: (trains: TrainPresence[], receivedAt: number) => void;
     upsertTrain: (train: TrainPresence) => void;
     pruneStaleTrains: () => void;
     toggleSpectatorMode: () => void;
@@ -50,8 +74,10 @@ interface TrainStore {
 
 function getInitialCrowdConsent(): CrowdPresenceConsent {
     if (typeof window === 'undefined') return 'unknown';
-    const stored = window.localStorage.getItem(CROWD_CONSENT_KEY);
-    return stored === 'granted' || stored === 'denied' ? stored : 'unknown';
+    try {
+        const stored = window.localStorage.getItem(CROWD_CONSENT_KEY);
+        return stored === 'granted' || stored === 'denied' ? stored : 'unknown';
+    } catch { return 'unknown'; }
 }
 
 function buildPresenceState(
@@ -63,7 +89,7 @@ function buildPresenceState(
         rawTrains.filter((train) => !isTrainPresenceExpired(train, now)),
         now,
     );
-    const trains = clusterTrainPresence(activeRaw, now);
+    const trains = clusterTrainPresence(activeRaw.filter((train) => train.predictionScope !== 'station'), now);
     const dwellSnapshot = buildStationDwellSnapshot(trains, now);
     const shouldReusePreviousDwell = previousDwellSnapshot?.stationDwellSignature === dwellSnapshot.signature;
 
@@ -84,6 +110,7 @@ function mergeRawTrainList(existing: TrainPresence[], incoming: TrainPresence[],
     const upsertNewest = (train: TrainPresence) => {
         const identity = getTrainPresenceIdentity(train);
         const current = next.get(identity);
+        if (current?.sampleId && train.sampleId === current.sampleId) return;
         if (!current || train.updatedAt >= current.updatedAt) {
             next.set(identity, train);
         }
@@ -122,6 +149,25 @@ export const useTrainStore = create<TrainStore>((set, get) => ({
     lastPollTimestamp: 0,
     isPolling: false,
     error: null,
+    predictionSnapshots: [],
+    predictionContext: 0,
+    predictionRevision: 0,
+    predictionState: 'idle',
+    predictionError: null,
+    predictionLastReceivedAt: 0,
+    stationForecasts: [],
+    offlineForecasts: [],
+    realtimeStatus: 'idle',
+    realtimeError: null,
+    crowdSnapshotReceivedAt: 0,
+    apiConfig: structuredClone(API_CONFIG_DEFAULTS),
+    runtimeConfigState: 'loading',
+    runtimeConfigError: null,
+    setRuntimeApiConfig: (result) => set((state) => ({
+        apiConfig: result.config?.api_config ?? state.apiConfig,
+        runtimeConfigState: result.status,
+        runtimeConfigError: result.error,
+    })),
     mockTrainsMode: false,
     timeFactor: 1,
     isBroadcasting: false,
@@ -147,16 +193,72 @@ export const useTrainStore = create<TrainStore>((set, get) => ({
         const rawTrains = mergeRawTrainList(withoutPreviousPredictions, incoming, [state.crowdTrain, state.selfTrainPresence]);
         return {
             ...buildPresenceState(rawTrains, state),
-            lastPollTimestamp: Date.now(),
+            stationForecasts: incoming.filter((train) => train.predictionScope === 'station'),
         };
     }),
 
+    beginPredictionContext: () => {
+        const context = get().predictionContext + 1;
+        set((state) => ({
+            predictionContext: context,
+            predictionRevision: 0,
+            predictionSnapshots: [],
+            stationForecasts: [],
+            offlineForecasts: [],
+            predictionLastReceivedAt: 0,
+            predictionState: 'idle',
+            predictionError: null,
+            ...buildPresenceState(state.rawTrains.filter((train) => train.source !== 'predicted'), state),
+        }));
+        return context;
+    },
+
+    setPredictionSnapshots: (context, incoming) => set((state) => {
+        if (context !== state.predictionContext) return state;
+        const snapshots = new Map(state.predictionSnapshots.map((snapshot) => [snapshot.key, snapshot]));
+        let accepted = false;
+        for (const snapshot of incoming) {
+            const previous = snapshots.get(snapshot.key);
+            if (previous && Date.parse(snapshot.response.generatedAt) < Date.parse(previous.response.generatedAt)) continue;
+            snapshots.set(snapshot.key, snapshot);
+            accepted = true;
+        }
+        if (!accepted) return state;
+        const predictionSnapshots = Array.from(snapshots.values());
+        const predictions = predictionSnapshots.flatMap((snapshot) => snapshot.response.predictions);
+        const rawTrains = mergeRawTrainList(state.rawTrains.filter((train) => train.source !== 'predicted'),
+            predictions, [state.crowdTrain, state.selfTrainPresence]);
+        const receivedAt = Math.max(...predictionSnapshots.map((snapshot) => snapshot.receivedAt));
+        const fresh = predictionSnapshots.every((snapshot) => Date.parse(snapshot.response.validUntil) >= Date.now());
+        return {
+            ...buildPresenceState(rawTrains, state),
+            predictionSnapshots,
+            predictionRevision: state.predictionRevision + 1,
+            stationForecasts: predictions.filter((train) => train.predictionScope === 'station'),
+            offlineForecasts: [],
+            predictionState: fresh ? 'fresh' : 'stale',
+            predictionError: null,
+            predictionLastReceivedAt: receivedAt,
+            lastPollTimestamp: receivedAt,
+        };
+    }),
+    setPredictionState: (predictionState, predictionError = null) => set({ predictionState, predictionError }),
+    setOfflineForecasts: (context, offlineForecasts, revision) => set((state) => context === state.predictionContext
+        && revision === state.predictionRevision
+        && state.predictionState !== 'fresh' ? { offlineForecasts, stationForecasts: offlineForecasts } : state),
+    setRealtimeStatus: (realtimeStatus, realtimeError = null) => set({ realtimeStatus, realtimeError }),
+    reconcileCrowdSnapshot: (incoming, receivedAt) => set((state) => {
+        if (receivedAt < state.crowdSnapshotReceivedAt) return state;
+        const rawTrains = mergeRawTrainList(state.rawTrains, incoming, [state.crowdTrain, state.selfTrainPresence]);
+        return { ...buildPresenceState(rawTrains, state), crowdSnapshotReceivedAt: receivedAt };
+    }),
+
     upsertTrain: (train) => set((state) => {
+        const previous = state.rawTrains.find((candidate) => getTrainPresenceIdentity(candidate) === getTrainPresenceIdentity(train));
+        if (previous && (train.updatedAt < previous.updatedAt || (train.sampleId && train.sampleId === previous.sampleId))) return state;
         const rawTrains = mergeRawTrainList(state.rawTrains, [train], [state.crowdTrain, state.selfTrainPresence]);
         return {
             ...buildPresenceState(rawTrains, state),
-            lastPollTimestamp: Date.now(),
-            error: null,
         };
     }),
 
@@ -228,7 +330,7 @@ export const useTrainStore = create<TrainStore>((set, get) => ({
     }),
     setCrowdConsent: (consent) => {
         if (typeof window !== 'undefined') {
-            window.localStorage.setItem(CROWD_CONSENT_KEY, consent);
+            try { window.localStorage.setItem(CROWD_CONSENT_KEY, consent); } catch { /* Consent still changes in memory. */ }
         }
         set({ crowdConsent: consent });
     },

@@ -80,6 +80,7 @@ export function CongestionAlert() {
                 {/* Dismiss Button */}
                 <button
                     onClick={onDismiss}
+                    aria-label="Dismiss congestion alert"
                     className="absolute top-4 right-4 z-20 p-1 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
                 >
                     <X className="w-4 h-4 text-white/60" />

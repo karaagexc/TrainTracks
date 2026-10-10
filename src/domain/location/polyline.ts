@@ -1,6 +1,22 @@
 import type { Coordinates } from '@/types';
 import { getDistanceKm } from '@/utils/geo';
 
+const pathMetrics = new WeakMap<Coordinates[], { lengths: number[]; cumulative: number[]; total: number }>();
+
+function getPathMetrics(path: Coordinates[]) {
+    const cached = pathMetrics.get(path);
+    if (cached) return cached;
+    const lengths: number[] = [];
+    const cumulative = [0];
+    for (let index = 1; index < path.length; index += 1) {
+        lengths.push(getDistanceKm(path[index - 1], path[index]) * 1000);
+        cumulative.push(cumulative[index - 1] + lengths[index - 1]);
+    }
+    const metrics = { lengths, cumulative, total: cumulative.at(-1) ?? 0 };
+    pathMetrics.set(path, metrics);
+    return metrics;
+}
+
 export interface PolylineProjection {
     location: Coordinates;
     distanceAlongMeters: number;
@@ -20,11 +36,7 @@ function localPoint(location: Coordinates, latitude: number) {
 }
 
 export function getPolylineLengthMeters(path: Coordinates[]): number {
-    let total = 0;
-    for (let index = 1; index < path.length; index += 1) {
-        total += getDistanceKm(path[index - 1], path[index]) * 1000;
-    }
-    return total;
+    return getPathMetrics(path).total;
 }
 
 export function projectLocationToPolyline(
@@ -37,7 +49,8 @@ export function projectLocationToPolyline(
     const target = localPoint(location, originLatitude);
     let distanceBeforeMeters = 0;
     let best: PolylineProjection | null = null;
-    const pathLengthMeters = getPolylineLengthMeters(path);
+    const metrics = getPathMetrics(path);
+    const pathLengthMeters = metrics.total;
 
     for (let index = 0; index < path.length - 1; index += 1) {
         const start = localPoint(path[index], originLatitude);
@@ -53,7 +66,7 @@ export function projectLocationToPolyline(
         const projectedX = start.x + dx * progress;
         const projectedY = start.y + dy * progress;
         const distanceMeters = Math.hypot(target.x - projectedX, target.y - projectedY);
-        const segmentLengthMeters = getDistanceKm(path[index], path[index + 1]) * 1000;
+        const segmentLengthMeters = metrics.lengths[index];
 
         if (!best || distanceMeters < best.distanceFromPathMeters) {
             best = {
@@ -81,9 +94,10 @@ export function interpolatePolyline(path: Coordinates[], distanceMeters: number)
     if (path.length === 0) return null;
     if (path.length === 1 || distanceMeters <= 0) return path[0];
 
+    const metrics = getPathMetrics(path);
     let remaining = distanceMeters;
     for (let index = 1; index < path.length; index += 1) {
-        const segmentMeters = getDistanceKm(path[index - 1], path[index]) * 1000;
+        const segmentMeters = metrics.lengths[index - 1];
         if (remaining <= segmentMeters) {
             const progress = segmentMeters > 0 ? remaining / segmentMeters : 0;
             return {

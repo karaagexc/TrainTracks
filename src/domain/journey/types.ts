@@ -75,6 +75,11 @@ export interface JourneyGraph {
 }
 
 export interface JourneySnapshot {
+    tripId: string | null;
+    startedAt: number | null;
+    completedAt: number | null;
+    routeVersion: number;
+    completedDistanceMeters: number;
     phase: JourneyPhase;
     statusCode: JourneyStatusCode;
     route: JourneyRoute | null;
@@ -114,11 +119,12 @@ export interface JourneySnapshot {
 }
 
 export type JourneyInput =
-    | { type: 'START_TRIP'; route: JourneyRoute | null }
+    | { type: 'START_TRIP'; route: JourneyRoute | null; tripId?: string; timestamp?: number }
     | { type: 'END_TRIP' }
     | { type: 'SET_FALLBACK_ACTIVE'; active: boolean }
     | { type: 'SYNC_ROUTE'; route: JourneyRoute | null; anchorStationId?: string | null; preserveDeparture?: boolean }
     | { type: 'SNAP_TO_STATION'; stationId: string }
+    | { type: 'CONFIRM_TRANSFER'; edgeId: string; timestamp: number }
     | {
         type: 'LOCATION_SAMPLE';
         location: Coordinates | null;
@@ -137,6 +143,7 @@ export interface JourneyTripLogicView {
     legProgress: number;
     totalProgress: number;
     visualPrev: Station | null;
+    railLegProgress: number;
     visualNext: Station | null;
     progressVisualNext: Station | null;
     stopsRemaining: number | null;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPredictionApiAccess } from '@/domain/predictions/apiAccess';
-import { getPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
+import { getPublicApiHeaders, getConfiguredPublicApiHeaders, noStoreHeaders } from '@/domain/predictions/http';
 import { createPredictionStream, predictionStreamHeaders } from '@/domain/predictions/stream';
 
 export const dynamic = 'force-dynamic';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function OPTIONS(request: NextRequest) {
     return new Response(null, {
         status: 204,
-        headers: getPublicApiHeaders(request),
+        headers: await getConfiguredPublicApiHeaders(request),
     });
 }
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         });
     }
 
-    return new Response(createPredictionStream(request.nextUrl, request.signal), {
+    return new Response(createPredictionStream(request.nextUrl, request.signal, { publicApi: true }), {
         headers: {
             ...predictionStreamHeaders(),
             ...getPublicApiHeaders(request),

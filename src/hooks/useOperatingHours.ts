@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useTripStore } from '@/store/useTripStore';
+import { getTrainServiceAvailability } from '@/domain/predictions/engine';
+import { isRailLine } from '@/domain/railway';
 
 export function useOperatingHours() {
     const [isOpen, setIsOpen] = useState(true);
-    const { isDevMode } = useTripStore();
+    const isDevMode = useTripStore((state) => state.isDevMode);
+    const selectedLine = useTripStore((state) => state.selectedLine);
 
     useEffect(() => {
         const checkTime = () => {
@@ -15,28 +18,16 @@ export function useOperatingHours() {
                 return;
             }
 
-            const now = new Date();
-            const hour = now.getHours();
-            const minute = now.getMinutes();
-            const timeInMinutes = hour * 60 + minute;
-
-            // OPEN: 4:30 AM (270 min)
-            // CLOSE: 11:20 PM (23:20 -> 1400 min)
-            const openTime = 4 * 60 + 30;
-            const closeTime = 23 * 60 + 20;
-
-            if (timeInMinutes >= openTime && timeInMinutes < closeTime) {
-                setIsOpen(true);
-            } else {
-                setIsOpen(false);
-            }
+            setIsOpen(getTrainServiceAvailability({
+                lineId: selectedLine && isRailLine(selectedLine) ? selectedLine : null,
+            }));
         };
 
         checkTime(); // Initial check
         const interval = setInterval(checkTime, 60000); // Check every minute
 
         return () => clearInterval(interval);
-    }, [isDevMode]);
+    }, [isDevMode, selectedLine]);
 
     return isOpen;
 }

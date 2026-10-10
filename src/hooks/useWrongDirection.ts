@@ -5,7 +5,7 @@ import { getDistanceKm } from '@/utils/geo';
 import { getPrecisionFare } from '@/utils/fareNew';
 import { getJourneyStationById } from '@/domain/journey/graph';
 import type { Station } from '@/types';
-import { evaluateWrongDirectionEvidence, WRONG_DIRECTION_CONFIG } from '@/domain/alerts/wrongDirection';
+import { evaluateWrongDirectionEvidence, isWrongDirectionSampleEligible, WRONG_DIRECTION_CONFIG } from '@/domain/alerts/wrongDirection';
 
 const CONFIG = WRONG_DIRECTION_CONFIG;
 
@@ -37,16 +37,14 @@ function nearestRouteStation(location: { latitude: number; longitude: number }, 
 }
 
 export function useWrongDirection(): WrongDirectionState {
-    const {
-        origin,
-        destination,
-        ticketType,
-        ignoreWrongDirection,
-        status: tripStatus,
-        journeySnapshot,
-        isGpsOverride,
-    } = useTripStore();
-    const { location, speed, rawHeading, gpsAccuracy } = useSmartLocation();
+    const origin = useTripStore((store) => store.origin);
+    const destination = useTripStore((store) => store.destination);
+    const ticketType = useTripStore((store) => store.ticketType);
+    const ignoreWrongDirection = useTripStore((store) => store.ignoreWrongDirection);
+    const tripStatus = useTripStore((store) => store.status);
+    const journeySnapshot = useTripStore((store) => store.journeySnapshot);
+    const isGpsOverride = useTripStore((store) => store.isGpsOverride);
+    const { location, speed, rawHeading, gpsAccuracy, locationSample } = useSmartLocation();
 
     const [state, setState] = useState<Omit<WrongDirectionState, 'dismiss'>>({
         isWrongWay: false,
@@ -60,6 +58,7 @@ export function useWrongDirection(): WrongDirectionState {
     const consecutiveBadRef = useRef(0);
     const consecutiveGoodRef = useRef(0);
     const dismissedUntilRef = useRef(0);
+    const checkedSampleAtRef = useRef<number | null>(null);
 
     const activeRailEdge = useMemo(() => {
         const edge = journeySnapshot.route?.edges[journeySnapshot.activeEdgeIndex];
@@ -77,6 +76,7 @@ export function useWrongDirection(): WrongDirectionState {
         !isGpsOverride &&
         !ignoreWrongDirection &&
         activeRailEdge &&
+        isWrongDirectionSampleEligible(locationSample) &&
         (speed ?? 0) >= CONFIG.minSpeedKph &&
         (gpsAccuracy ?? 999) <= CONFIG.maxGpsAccuracyMeters,
     );
@@ -84,9 +84,10 @@ export function useWrongDirection(): WrongDirectionState {
     useEffect(() => {
         consecutiveBadRef.current = 0;
         consecutiveGoodRef.current = 0;
+        checkedSampleAtRef.current = null;
         dismissedUntilRef.current = 0;
         setState((prev) => ({ ...prev, isWrongWay: false, nearestStationName: null }));
-    }, [origin?.id, destination?.id]);
+    }, [journeySnapshot.tripId, journeySnapshot.routeVersion]);
 
     useEffect(() => {
         if (!shouldCheck || !location || rawHeading === null || !journeySnapshot.route || !activeRailEdge || !origin || !destination) {
@@ -95,6 +96,8 @@ export function useWrongDirection(): WrongDirectionState {
         }
 
         if (Date.now() < dismissedUntilRef.current) return;
+        if (checkedSampleAtRef.current === locationSample.timestamp) return;
+        checkedSampleAtRef.current = locationSample.timestamp;
 
         const fromStation = getJourneyStationById(activeRailEdge.fromStationId);
         const toStation = getJourneyStationById(activeRailEdge.toStationId);
@@ -158,6 +161,7 @@ export function useWrongDirection(): WrongDirectionState {
         journeySnapshot.phase,
         journeySnapshot.route,
         location,
+        locationSample.timestamp,
         origin,
         rawHeading,
         shouldCheck,

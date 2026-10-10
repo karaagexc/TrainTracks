@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminContext } from '@/domain/auth/admin';
 import { noStoreHeaders } from '@/domain/predictions/http';
 import { createAdminClient, hasAdminSupabaseConfig } from '@/lib/supabase/admin';
+import { APP_CONFIG_COLUMNS, isRecord, readAppConfig, parseAppConfig, validateApiConfig, validateCongestionConfig } from '@/domain/config';
+import { isSameOriginMutation } from '@/domain/auth/request';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,19 +26,16 @@ export async function GET() {
         });
     }
 
-    const { data, error } = await createAdminClient()
-        .from('app_config')
-        .select('id,maintenance_mode,maintenance_message,congestion_config,updated_at')
-        .eq('id', 1)
-        .single();
+    const result = await readAppConfig(createAdminClient());
 
-    return NextResponse.json({ ok: !error, config: data ?? null, error: error?.message ?? null }, {
-        status: error ? 500 : 200,
+    return NextResponse.json({ ok: result.status === 'ready', ...result }, {
+        status: result.status === 'error' ? 503 : 200,
         headers: noStoreHeaders(),
     });
 }
 
 export async function PATCH(request: NextRequest) {
+    if (!isSameOriginMutation(request)) return NextResponse.json({ ok: false, error: 'forbidden_origin' }, { status: 403, headers: noStoreHeaders() });
     if (!await authorized()) {
         return NextResponse.json({ ok: false, error: 'forbidden' }, {
             status: 403,
@@ -50,29 +49,50 @@ export async function PATCH(request: NextRequest) {
         });
     }
 
-    const payload = await request.json().catch(() => null) as Record<string, unknown> | null;
-    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (typeof payload?.maintenanceMode === 'boolean') {
+    const payload: unknown = await request.json().catch(() => null);
+    const invalid = (error: string) => NextResponse.json({ ok: false, error }, { status: 400, headers: noStoreHeaders() });
+    const fields = ['maintenanceMode', 'maintenanceMessage', 'congestionConfig', 'apiConfig', 'publicApiEnabled'];
+    if (!isRecord(payload) || !Object.keys(payload).length || Object.keys(payload).some(key => !fields.includes(key))) {
+        return invalid('Invalid or empty configuration edit.');
+    }
+    const updates: Record<string, unknown> = {};
+    if ('maintenanceMode' in payload) {
+        if (typeof payload.maintenanceMode !== 'boolean') return invalid('maintenanceMode must be boolean.');
         updates.maintenance_mode = payload.maintenanceMode;
     }
-    if (typeof payload?.maintenanceMessage === 'string' || payload?.maintenanceMessage === null) {
+    if ('maintenanceMessage' in payload) {
+        if (payload.maintenanceMessage !== null && (typeof payload.maintenanceMessage !== 'string' || payload.maintenanceMessage.length > 240)) {
+            return invalid('maintenanceMessage must be null or at most 240 characters.');
+        }
         updates.maintenance_message = typeof payload.maintenanceMessage === 'string'
-            ? payload.maintenanceMessage.trim().slice(0, 240)
+            ? payload.maintenanceMessage.trim()
             : null;
     }
-    if (payload?.congestionConfig && typeof payload.congestionConfig === 'object') {
-        updates.congestion_config = payload.congestionConfig;
+    if ('congestionConfig' in payload) {
+        const validated = validateCongestionConfig(payload.congestionConfig);
+        if (!validated.ok) return invalid(validated.error);
+        updates.congestion_config = validated.value;
+    }
+    if ('apiConfig' in payload) {
+        const validated = validateApiConfig(payload.apiConfig);
+        if (!validated.ok) return invalid(validated.error);
+        updates.api_config = validated.value;
+    }
+    if ('publicApiEnabled' in payload) {
+        if (typeof payload.publicApiEnabled !== 'boolean') return invalid('publicApiEnabled must be boolean.');
+        updates.public_api_enabled = payload.publicApiEnabled;
     }
 
     const { data, error } = await createAdminClient()
         .from('app_config')
         .update(updates)
         .eq('id', 1)
-        .select('id,maintenance_mode,maintenance_message,congestion_config,updated_at')
+        .select(APP_CONFIG_COLUMNS)
         .single();
 
-    return NextResponse.json({ ok: !error, config: data ?? null, error: error?.message ?? null }, {
-        status: error ? 500 : 200,
+    const result = error ? { status: 'error', config: null, error: error.message } : parseAppConfig(data);
+    return NextResponse.json({ ok: result.status === 'ready', ...result }, {
+        status: result.status === 'ready' ? 200 : 503,
         headers: noStoreHeaders(),
     });
 }

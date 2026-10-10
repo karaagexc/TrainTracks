@@ -250,13 +250,18 @@ assert.equal(isPublicTrainPresence(crowdTrain({ lineId: 'MRT7' })), false, 'MRT-
 assert.equal(isPublicTrainPresence(crowdTrain({ lineId: 'MRT3' })), true, 'built rail should remain public');
 
 const sanitized = sanitizeCrowdPresencePayload({
-    ...crowdTrain({ source: 'simulated', updatedAt: 1 }),
+    ...crowdTrain({ updatedAt: now - 1000 }),
     deviceId: 'device-valid-1234',
+    locationSource: 'gps',
 }, now);
 assert.equal(sanitized.ok, true, 'valid live crowd payload should be accepted');
 assert.equal(sanitized.train?.source, 'crowd', 'server sanitizer must force crowd source');
 assert.equal(sanitized.train?.sampleId, sanitized.sampleId, 'broadcast payload keeps the durable idempotency key');
-assert.equal(sanitized.train?.updatedAt, now, 'server sanitizer owns crowd timestamps');
+assert.equal(sanitized.train?.updatedAt, now - 1000, 'server preserves the observed GPS timestamp');
+assert.equal(sanitizeCrowdPresencePayload({ ...crowdTrain({ source: 'simulated' }), deviceId: 'device-valid-1234' }, now).ok,
+    false, 'simulation must never be relabeled as crowd GPS');
+assert.equal(sanitizeCrowdPresencePayload({ ...crowdTrain(), locationSource: 'fallback', deviceId: 'device-valid-1234' }, now).ok,
+    false, 'dead reckoning must never be relabeled as crowd GPS');
 assert.equal(sanitized.train?.stationName, 'EDSA', 'server sanitizer should derive station names');
 assert.ok(sanitized.train?.id.startsWith('CROWD-'), 'server sanitizer should generate anonymous crowd ids');
 
@@ -266,12 +271,12 @@ assert.equal(
     'crowd broadcast API must reject MRT-7 live signals',
 );
 assert.equal(
-    sanitizeCrowdPresencePayload({ ...crowdTrain({ direction: 'EASTBOUND' }), deviceId: 'device-valid-1234' }).code,
+    sanitizeCrowdPresencePayload({ ...crowdTrain({ direction: 'EASTBOUND' }), deviceId: 'device-valid-1234' }, now).code,
     'invalid_direction',
     'crowd broadcast API must reject directions that do not belong to the line',
 );
 assert.equal(
-    sanitizeCrowdPresencePayload({ ...crowdTrain({ lat: 0, lng: 0 }), deviceId: 'device-valid-1234' }).code,
+    sanitizeCrowdPresencePayload({ ...crowdTrain({ lat: 0, lng: 0 }), deviceId: 'device-valid-1234' }, now).code,
     'invalid_location',
     'crowd broadcast API must reject impossible live rail locations',
 );

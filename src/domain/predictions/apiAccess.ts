@@ -2,6 +2,8 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { createAdminClient, hasAdminSupabaseConfig } from '@/lib/supabase/admin';
 import { publicApiTokenHasScope, type PublicApiScope } from '@/domain/predictions/apiScopes';
+import { getServerApiConfiguration, publicApiConfigurationAccess } from './serverConfig';
+import { isPublicPredictionUrl } from './http';
 
 export interface PredictionApiAccessResult {
     ok: boolean;
@@ -12,7 +14,9 @@ export interface PredictionApiAccessResult {
         | 'missing_api_token'
         | 'invalid_api_token'
         | 'origin_not_allowed'
-        | 'insufficient_scope';
+        | 'insufficient_scope'
+        | 'api_config_unavailable'
+        | 'public_api_disabled';
     message: string;
     tokenId?: string | null;
     allowedOrigins?: string[];
@@ -20,6 +24,27 @@ export interface PredictionApiAccessResult {
 }
 
 type EnvLike = Record<string, string | undefined>;
+const lastUsageWrites = new Map<string, number>();
+const usageWritesInFlight = new Map<string, Promise<void>>();
+
+async function recordTokenUsage(admin: ReturnType<typeof createAdminClient>, tokenId: string) {
+    const active = usageWritesInFlight.get(tokenId);
+    if (active) return active;
+    const now = Date.now();
+    if (now - (lastUsageWrites.get(tokenId) ?? 0) < 60_000) return;
+    const write = (async () => {
+        try {
+            const { error } = await admin.from('api_tokens')
+                .update({ last_used_at: new Date(now).toISOString() }).eq('id', tokenId);
+            if (!error) {
+                if (lastUsageWrites.size >= 1000) lastUsageWrites.delete(lastUsageWrites.keys().next().value!);
+                lastUsageWrites.set(tokenId, now);
+            }
+        } catch { /* Telemetry failure must not revoke otherwise valid access. */ }
+    })();
+    usageWritesInFlight.set(tokenId, write);
+    try { await write; } finally { usageWritesInFlight.delete(tokenId); }
+}
 
 function splitCsv(value: string | undefined): string[] {
     return (value ?? '')
@@ -39,18 +64,20 @@ function normalizeOrigin(value: string | null | undefined): string | null {
     }
 }
 
-function requestOriginAllowed(headers: Headers, url: URL | undefined, env: EnvLike): boolean {
+function requestOriginAllowed(headers: Headers, url: URL | undefined, env: EnvLike, corsOrigin?: string, allowWildcard = false): boolean {
     const rawOrigin = headers.get('origin');
     if (!rawOrigin) return true;
     const origin = normalizeOrigin(rawOrigin);
-    if (!origin) return false;
+    if (!origin || rawOrigin !== origin) return false;
     if (url && origin === url.origin) return true;
+    if (allowWildcard && corsOrigin === '*' && isPublicPredictionUrl(url)) return true;
 
     const configured = new Set([
         normalizeOrigin(env.NEXT_PUBLIC_SITE_URL),
         normalizeOrigin(env.VERCEL_URL),
         normalizeOrigin(env.VERCEL_PROJECT_PRODUCTION_URL),
         ...splitCsv(env.TRAINTRACKS_PUBLIC_API_ORIGINS).map(normalizeOrigin),
+        corsOrigin && corsOrigin !== '*' ? normalizeOrigin(corsOrigin) : null,
     ].filter((candidate): candidate is string => Boolean(candidate)));
     if (configured.has(origin)) return true;
     return env.NODE_ENV !== 'production'
@@ -97,7 +124,11 @@ export async function verifyPredictionApiAccess({
     requiredScope?: PublicApiScope;
     env?: EnvLike;
 }): Promise<PredictionApiAccessResult> {
-    if (!requestOriginAllowed(headers, url, env)) {
+    const configuration = await getServerApiConfiguration();
+    const corsOrigin = configuration.status === 'ready' ? configuration.config?.api_config.corsOrigin : undefined;
+    const originAllowed = requestOriginAllowed(headers, url, env, corsOrigin);
+    const unrestrictedOriginAllowed = requestOriginAllowed(headers, url, env, corsOrigin, requiredScope === 'predictions:read');
+    if (!unrestrictedOriginAllowed) {
         return {
             ok: false,
             status: 403,
@@ -135,6 +166,8 @@ export async function verifyPredictionApiAccess({
     const hashMatch = hashTokens.some((candidate) => safeEqual(candidate, tokenHash));
 
     if (rawMatch || hashMatch) {
+        const gate = publicApiConfigurationAccess(configuration);
+        if (!gate.ok) return gate;
         return {
             ok: true,
             status: 200,
@@ -162,7 +195,7 @@ export async function verifyPredictionApiAccess({
             : false;
         if (data && !expired) {
             const allowedOrigins = data.allowed_origins ?? [];
-            if (!tokenOriginAllowed(headers, allowedOrigins)) {
+            if ((!originAllowed && allowedOrigins.length > 0) || !tokenOriginAllowed(headers, allowedOrigins)) {
                 return {
                     ok: false,
                     status: 403,
@@ -181,10 +214,9 @@ export async function verifyPredictionApiAccess({
                 };
             }
 
-            void admin
-                .from('api_tokens')
-                .update({ last_used_at: new Date().toISOString() })
-                .eq('id', data.id);
+            const gate = publicApiConfigurationAccess(configuration);
+            if (!gate.ok) return gate;
+            await recordTokenUsage(admin, data.id);
 
             return {
                 ok: true,

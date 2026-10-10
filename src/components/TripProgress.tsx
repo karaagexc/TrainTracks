@@ -1,10 +1,10 @@
 
 import { Coordinates, LineId, Station } from "@/types";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { getLineColor, getStationBadge, getThemeColors, getDoorSide } from "@/utils/stationUtils";
-import { getFareBreakdown } from "@/utils/fareNew";
-import { LINES } from "@/data/stations";
+import { getFareBreakdown, getFareQuoteForRoute } from "@/utils/fareNew";
+import { LINES, STATIONS } from "@/data/stations";
 import { Navigation, ArrowRight, CornerUpRight, CornerUpLeft, ArrowUp, ArrowDown, Volume2, VolumeX, Gauge } from "lucide-react";
 import { useTripStore } from "@/store/useTripStore";
 import { Marquee } from "@/components/ui/Marquee";
@@ -44,19 +44,7 @@ interface Props {
     transferTargetCoordinates?: Coordinates | null;
     transferDistanceMeters?: number | null;
     transferTurnDirection?: TransferTurnDirection | null;
-}
-
-// Helper to get interchange name
-function getTransferStationName(from: string, to: string) {
-    const pair = [from, to].sort().join('-');
-    switch (pair) {
-        case 'LRT1-MRT3': return 'EDSA / Taft Ave';
-        case 'LRT1-LRT2': return 'D. Jose / Recto';
-        case 'LRT1-MRT7': return 'Roosevelt / Common Station';
-        case 'LRT2-MRT3': return 'Araneta - Cubao';
-        case 'MRT3-MRT7': return 'North Avenue / Common Station';
-        default: return 'Interchange';
-    }
+    onTicketClick?: () => void;
 }
 
 function clampPercent(value: number | null | undefined) {
@@ -98,7 +86,7 @@ function TransferCompassRuntime({
     targetCoordinates: Coordinates | null | undefined;
 }) {
     const location = useLocationStore((state) => state.sample?.location ?? null);
-    const { heading: deviceHeading } = useDeviceOrientation();
+    const { heading: deviceHeading, status, error } = useDeviceOrientation();
     const rotation = location && targetCoordinates && deviceHeading !== null
         ? getBearing(location, targetCoordinates) - deviceHeading
         : 0;
@@ -111,7 +99,12 @@ function TransferCompassRuntime({
         document.documentElement.style.removeProperty('--tt-transfer-rotation');
     }, []);
 
-    return null;
+    const label = status === 'active' && location && targetCoordinates
+        ? 'Guidance Active'
+        : status === 'prompt' ? 'Compass permission needed'
+        : status === 'requesting' || status === 'waiting' ? 'Waiting for compass'
+        : 'Compass unavailable - follow signs';
+    return <p className="text-[10px] text-white/90 font-medium opacity-90" role="status" title={error ?? undefined}>{label}</p>;
 }
 
 function TransferDirectionIndicator({
@@ -167,12 +160,25 @@ export function TripProgress({
     transferTargetCoordinates,
     transferDistanceMeters,
     transferTurnDirection,
+    onTicketClick,
 }: Props) {
     const destStore = useTripStore((state) => state.destination);
     const walkingDistance = useTripStore((state) => state.walkingDistance);
     const isMuted = useTripStore((state) => state.isMuted);
     const setIsMuted = useTripStore((state) => state.setIsMuted);
     const direction = useTripStore((state) => state.direction);
+    const tripComplete = useTripStore((state) => state.status === 'ARRIVED');
+    const computedRoute = useTripStore((state) => state.computedRoute);
+    const startedAt = useTripStore((state) => state.journeySnapshot.startedAt);
+    const fareVerification = useMemo(() => getFareQuoteForRoute(computedRoute, ticketType as any || 'SJT', startedAt ?? Date.now()), [computedRoute, ticketType, startedAt]);
+    const unverifiedFare = fareVerification.segments.some((segment) => segment.verification === 'unverified');
+    const fareVerificationNote = [...new Set(fareVerification.segments.map((segment) => segment.verificationNote).filter(Boolean))].join(' ');
+    const nextTransfer = useTripStore((state) => state.journeySnapshot.route?.edges
+        .slice(state.journeySnapshot.activeEdgeIndex)
+        .find((edge): edge is JourneyTransferEdge => edge.type === 'transfer') ?? null);
+    const transferStations = nextTransfer
+        ? [nextTransfer.fromStationId, nextTransfer.toStationId].map((id) => STATIONS.find((station) => station.id === id)?.name ?? id)
+        : [];
 
     // Event-driven gradient flash (triggers on station change)
     const [gradientFlash, setGradientFlash] = useState(false);
@@ -276,7 +282,7 @@ export function TripProgress({
 
     // Time Estimation Helper
     const formatTime = (meters: number, stops: number = 0) => {
-        if (!meters) return '';
+        if (!Number.isFinite(meters) || meters < 0) return '';
         const lineSpeedKph = activeLineId ? LINES[activeLineId].avgCommercialSpeedKph : 30;
         const metersPerMinute = Math.max(1, (lineSpeedKph * 1000) / 60);
         const travelMinutes = meters / metersPerMinute;
@@ -288,7 +294,7 @@ export function TripProgress({
     const isNext = statsMode === 'NEXT';
     // Logic: Fallback to DEST if NEXT is N/A (e.g. at station?), or just always cycle?
     // If distanceToNext is null, force DEST.
-    const effectiveMode = distanceToNext ? statsMode : 'DEST';
+    const effectiveMode = distanceToNext != null && Number.isFinite(distanceToNext) ? statsMode : 'DEST';
 
     const renderStats = () => {
         const dist = effectiveMode === 'NEXT' ? distanceToNext : distanceToDest;
@@ -296,7 +302,7 @@ export function TripProgress({
         // For Next Station, stops = 0. For Dest, use stopsRemaining.
         const stops = effectiveMode === 'NEXT' ? 0 : (stopsRemaining || 0);
 
-        if (!dist) return (
+        if (dist == null || !Number.isFinite(dist)) return (
             <div className="flex items-center gap-2">
                 <Navigation className={cn("w-4 h-4 animate-pulse", theme.text)} />
                 <span className="text-sm font-bold text-white uppercase tracking-wider">Live Tracking</span>
@@ -356,10 +362,6 @@ export function TripProgress({
             isDarkMode ? "shadow-[0_0_40px_-5px_rgba(255,255,255,0.15)]" : "shadow-[0_35px_60px_-15px_rgba(0,0,0,0.8)]",
             theme.glass, theme.border // Apply Tint + Border to Main Card
         )}>
-            {isTransferring && (
-                <TransferCompassRuntime targetCoordinates={transferTargetCoordinates} />
-            )}
-
             {/* Dynamic Gradient (Event-driven: flashes on station change) */}
             <div className={cn("absolute inset-0 bg-gradient-to-b pointer-events-none -z-10 transition-opacity duration-1000",
                 gradientFlash ? "opacity-20" : "opacity-0",
@@ -377,7 +379,7 @@ export function TripProgress({
                                 <Navigation className="w-5 h-5 text-white fill-white" style={{ transform: 'rotate(var(--tt-transfer-rotation, 0deg))', transition: 'transform 0.5s ease-out' }} />
                                 <span className="text-sm font-black text-white uppercase tracking-wider">NAV MODE</span>
                             </div>
-                            <p className="text-[10px] text-white/90 font-medium opacity-90">Guidance Active</p>
+                            <TransferCompassRuntime targetCoordinates={transferTargetCoordinates} />
                         </div>
                     ) : (
                         // Custom Key ensures animation triggers on switch
@@ -473,15 +475,15 @@ export function TripProgress({
                         </div>
 
                         {/* Transfer Info (Dynamic) */}
-                        {origin && activeDest && origin.lineId !== activeDest.lineId && (
+                        {nextTransfer && (
                             <div>
                                 <div className="text-xs text-white/60 mb-1">Transfer Point</div>
                                 <div className="flex items-center gap-2">
-                                    <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", getLineColor(activeDest.lineId), activeDest.lineId === 'MRT3' ? 'text-black' : 'text-white')}>
-                                        {activeDest.lineId}
+                                    <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", getLineColor(nextTransfer.toLineId), nextTransfer.toLineId === 'MRT3' ? 'text-black' : 'text-white')}>
+                                        {nextTransfer.toLineId}
                                     </span>
                                     <span className="text-sm font-bold text-white">
-                                        {getTransferStationName(origin.lineId, activeDest.lineId)}
+                                        {transferStations.join(' / ')}
                                     </span>
                                 </div>
                             </div>
@@ -490,14 +492,14 @@ export function TripProgress({
                         {/* Footer: Ticket Type & Fare */}
                         <div className="pt-4 border-t border-zinc-800/50 flex flex-col gap-2">
                             {/* Fare Breakdown Details */}
-                            {origin && activeDest && origin.lineId !== activeDest.lineId && (
+                            {origin && activeDest && (origin.lineId !== activeDest.lineId || unverifiedFare) && (
                                 (() => {
                                     // Calculate Breakdown
-                                    const breakdown = getFareBreakdown(origin, activeDest, ticketType as any || 'SJT');
+                                    const breakdown = getFareBreakdown(origin, activeDest, ticketType as any || 'SJT', computedRoute, startedAt ?? Date.now());
                                     return (
                                         <div className="bg-black/40 rounded-lg p-3 mb-2 text-xs space-y-2 border border-white/5 animate-in fade-in slide-in-from-top-2">
                                             <div className="flex justify-between text-white/60 uppercase font-bold tracking-wider text-[10px]">
-                                                <span>Fare Breakdown</span>
+                                                <span>Fare Quote</span>
                                             </div>
                                             <div className="space-y-1">
                                                 {breakdown.lrt1 > 0 && (
@@ -525,7 +527,7 @@ export function TripProgress({
                                                     </div>
                                                 )}
                                                 <div className="border-t border-white/10 pt-1 flex justify-between font-bold text-white mt-1">
-                                                    <span>Total</span>
+                                                    <span title={fareVerificationNote || undefined}>{unverifiedFare ? 'Quoted Total (Unverified)' : 'Quoted Total'}</span>
                                                     <span>₱{breakdown.total}</span>
                                                 </div>
                                             </div>
@@ -535,12 +537,12 @@ export function TripProgress({
                             )}
 
                             <div className="flex items-center justify-between">
-                                <div className="text-sm text-white/70">Total Fare</div>
+                                <div className="text-sm text-white/70">Fare So Far</div>
                                 <div className="flex items-center gap-2">
                                     <span className="text-xl font-bold text-white">₱{runningFare}</span>
-                                    <span className="text-xs text-white/60 uppercase border border-white/20 rounded px-1.5 py-0.5">
+                                    <button type="button" onClick={onTicketClick} disabled={tripComplete} aria-label="Edit fare type" className="text-xs text-white/60 uppercase border border-white/20 rounded px-1.5 py-0.5">
                                         {ticketType === 'BUS_REGULAR' ? 'REGULAR' : ticketType}
-                                    </span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -607,6 +609,10 @@ export function TripProgress({
                     </div>
                     <div
                         className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(tripPercent)}
                         aria-label={`Trip progress ${Math.round(tripPercent)} percent`}
                         title={`Leg ${Math.round(legPercent)}%, trip ${Math.round(tripPercent)}%`}
                     >

@@ -117,6 +117,9 @@ export function buildLocationSample(raw: RawLocationState, override?: LocationOv
             accuracyMeters: override.accuracyMeters ?? 5,
             timestamp: override.timestamp ?? Date.now(),
             source: override.source,
+            lastTrustedFixAt: override.lastTrustedFixAt ?? raw.timestamp,
+            uncertaintyMeters: override.uncertaintyMeters ?? override.accuracyMeters ?? null,
+            confidence: override.confidence ?? (override.source === 'simulation' ? 'high' : 'low'),
         };
     }
 
@@ -127,5 +130,9 @@ export function buildLocationSample(raw: RawLocationState, override?: LocationOv
         accuracyMeters: raw.accuracyMeters,
         timestamp: raw.timestamp,
         source: 'gps',
+        lastTrustedFixAt: raw.timestamp,
+        uncertaintyMeters: raw.accuracyMeters,
+        confidence: raw.accuracyMeters !== null && raw.accuracyMeters <= 30 ? 'high'
+            : raw.accuracyMeters !== null && raw.accuracyMeters <= 100 ? 'medium' : 'low',
     };
 }

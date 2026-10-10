@@ -52,6 +52,7 @@ const { getEligibleSafetyReminder } = require('../src/domain/safety/reminders.ts
 const {
     getCheckpointDisposition,
     isActiveTripCheckpoint,
+    parseActiveTripCheckpoint,
     isPersistedTripPreferences,
 } = require('../src/domain/offline/tripCheckpoint.ts');
 function station(id) {
@@ -77,7 +78,7 @@ function sample(snapshot, location, speedKph = 0, options = {}) {
         location,
         speedKph,
         gpsAccuracy: options.gpsAccuracy ?? 5,
-        timestamp: options.timestamp,
+        timestamp: options.timestamp ?? Math.max(Date.now(), (snapshot.lastSampleAt ?? 0) + 4000),
         source: options.source ?? 'gps',
     });
 }
@@ -134,6 +135,8 @@ assert.equal(transferView.isTransferActive, true);
 assert.notEqual(transferSnapshot.phase, 'ARRIVED');
 
 transferSnapshot = sample(transferSnapshot, transferView.transferTargetCoordinates, 0);
+assert.equal(transferSnapshot.phase, 'TRANSFER_WALK', 'One fix must not finish a transfer');
+transferSnapshot = sample(transferSnapshot, transferView.transferTargetCoordinates, 0);
 transferView = buildJourneyTripLogicView(transferSnapshot, 'ARRIVED');
 assert.equal(transferSnapshot.phase, 'ARRIVED');
 assert.equal(transferSnapshot.currentStationId, 'M3-13');
@@ -151,6 +154,7 @@ assert.equal(taftTransferView.transferFrom?.id, 'M3-13');
 assert.equal(taftTransferView.transferTo?.id, 'L1-02');
 assert.equal(taftTransferView.transferDistanceMeters, 165);
 
+taftTransferSnapshot = sample(taftTransferSnapshot, taftTransferView.transferTargetCoordinates, 0);
 taftTransferSnapshot = sample(taftTransferSnapshot, taftTransferView.transferTargetCoordinates, 0);
 taftTransferView = buildJourneyTripLogicView(taftTransferSnapshot, 'WAITING');
 assert.equal(taftTransferSnapshot.currentStationId, 'L1-02');
@@ -217,6 +221,8 @@ function assertTransferHandoff({
         `${name}: walking meter must stay bounded before partner station`,
     );
 
+    snapshot = sample(snapshot, target, 0);
+    assert.equal(snapshot.phase, 'TRANSFER_WALK', `${name}: completion requires a second fresh fix`);
     snapshot = sample(snapshot, target, 0);
     view = buildJourneyTripLogicView(snapshot, snapshot.phase === 'ARRIVED' ? 'ARRIVED' : 'WAITING');
     assert.equal(snapshot.currentStationId, transferToId, `${name}: cursor must move to partner station`);
@@ -473,7 +479,8 @@ assert.equal(oneEdgeRecovery.currentStationId, 'L2-02', 'GPS recovery may reconc
 assert.equal(oneEdgeRecovery.activeEdgeIndex, 1);
 assert.equal(oneEdgeRecovery.estimatorMode, 'RECOVERING');
 const checkpoint = {
-    version: 1,
+    version: 2,
+    ownerId: null,
     savedAt: estimatorNow,
     tripStartedAt: estimatorNow - 60_000,
     originId: 'L2-01',
@@ -484,9 +491,11 @@ const checkpoint = {
     line7Mode: 'OFF',
     isDevMode: false,
     runningFare: 7.5,
-    journeySnapshot: liveEstimator,
+    journeySnapshot: { ...liveEstimator, startedAt: estimatorNow - 60_000 },
 };
 assert.equal(isActiveTripCheckpoint(checkpoint), true, 'valid active journey checkpoints pass strict validation');
+assert.equal(parseActiveTripCheckpoint({ ...checkpoint, version: 1 }).version, 2, 'legacy checkpoints migrate safely');
+assert.equal(parseActiveTripCheckpoint({ ...checkpoint, version: 1 }).ownerId, null, 'legacy recovery never invents history ownership');
 assert.equal(getCheckpointDisposition(checkpoint, estimatorNow + 19 * 60_000), 'auto_resume');
 assert.equal(getCheckpointDisposition({ ...checkpoint, isDevMode: true }, estimatorNow), 'expired', 'dev trips never survive a page reload');
 assert.equal(getCheckpointDisposition(checkpoint, estimatorNow + 21 * 60_000), 'prompt');
@@ -495,7 +504,7 @@ assert.equal(getCheckpointDisposition(checkpoint, estimatorNow - 10 * 60_000), '
 assert.equal(
     isActiveTripCheckpoint({
         ...checkpoint,
-        journeySnapshot: { ...liveEstimator, activeEdgeIndex: Number.POSITIVE_INFINITY },
+        journeySnapshot: { ...checkpoint.journeySnapshot, activeEdgeIndex: Number.POSITIVE_INFINITY },
     }),
     false,
     'corrupted journey cursors cannot poison trip recovery',
@@ -581,6 +590,9 @@ assert.equal(
     fareBeforeInvalidSnap,
     'a rejected station snap cannot mutate the running fare',
 );
+useTripStore.getState().setCurrentStation(station('L2-02'));
+assert.equal(useTripStore.getState().currentStation?.id, stationBeforeInvalidSnap, 'legacy diagnostics cannot advance a live trip');
+useTripStore.setState({ isDevMode: true, isGpsOverride: true });
 useTripStore.getState().setCurrentStation(station('L2-02'));
 assert.equal(useTripStore.getState().currentStation?.id, 'L2-02');
 assert.equal(useTripStore.getState().journeySnapshot.displayStationId, 'L2-02');

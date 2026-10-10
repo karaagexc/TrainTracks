@@ -4,7 +4,7 @@ import {
     buildAuthFailurePath,
     hasAuthCodeVerifierCookie,
     readAuthReturnToCookie,
-    resolveAuthCodeExchangeOrigin,
+    isAllowedAuthOrigin,
     resolveAuthOrigin,
     sanitizeAuthReturnTo,
 } from '@/domain/auth/redirect';
@@ -23,35 +23,27 @@ export async function GET(request: NextRequest) {
     const hasCodeVerifier = hasAuthCodeVerifierCookie(
         request.cookies.getAll().map(({ name }) => name),
     );
-    const exchangeOrigin = resolveAuthCodeExchangeOrigin(
-        request.nextUrl.origin,
-        configuredOrigin,
-        hasCodeVerifier,
-    );
-
-    if (code && exchangeOrigin !== request.nextUrl.origin) {
-        const exchangeUrl = new URL('/auth/callback', exchangeOrigin);
-        exchangeUrl.search = request.nextUrl.search;
-        console.info('[AuthCallback] Forwarding OAuth code to verifier origin', {
-            fromHost: request.nextUrl.host,
-            toHost: exchangeUrl.host,
-        });
-        return NextResponse.redirect(exchangeUrl);
+    const allowedDeploymentOrigins = [process.env.VERCEL_PROJECT_PRODUCTION_URL, process.env.AUTH_ALLOWED_ORIGINS]
+        .filter(Boolean).join(',');
+    if (!isAllowedAuthOrigin(request.nextUrl.origin, configuredOrigin, allowedDeploymentOrigins)) {
+        return NextResponse.json({ error: 'Auth callback origin is not allowlisted.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
     }
 
     const origin = resolveAuthOrigin(request.nextUrl.origin, configuredOrigin);
 
     const redirect = (path: string) => {
         const response = NextResponse.redirect(new URL(path, origin));
+        response.headers.set('Cache-Control', 'no-store');
         response.cookies.delete(AUTH_RETURN_TO_COOKIE);
         return response;
     };
 
-    if (code) {
+    if (code && hasCodeVerifier) {
         const supabase = await createClient();
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-        if (!error) {
+        const verified = !error && data.session ? await supabase.auth.getUser() : null;
+        if (!error && data.session && verified?.data.user && !verified.error && data.session.user.id === verified.data.user.id) {
             let redirectPath = next;
             if (type === 'signup' || type === 'email') {
                 redirectPath = '/auth/verified';
@@ -64,9 +56,8 @@ export async function GET(request: NextRequest) {
 
         console.error('[AuthCallback] OAuth code exchange failed', {
             callbackHost: request.nextUrl.host,
-            configuredOrigin: exchangeOrigin,
-            errorCode: error.code ?? 'unknown',
-            errorStatus: error.status ?? null,
+            errorCode: error?.code ?? 'session_not_verified',
+            errorStatus: error?.status ?? null,
             hasCodeVerifier,
         });
 
@@ -77,5 +68,5 @@ export async function GET(request: NextRequest) {
     }
 
     // Preserve the requested destination so a retry returns to the same surface.
-    return redirect(buildAuthFailurePath(next, 'exchange_failed'));
+    return redirect(buildAuthFailurePath(next, code && !hasCodeVerifier ? 'pkce_verifier_missing' : 'exchange_failed'));
 }

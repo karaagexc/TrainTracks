@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMap } from 'react-leaflet';
 import { useTrainStore } from '@/store/useTrainStore';
+import { isMapTrainVisuallyMoving } from './mapIconCache';
 import { EDSA_COLOR } from '@/data/edsaStops';
 import {
     TrainPresence,
@@ -98,11 +99,16 @@ export function LiveTrainLayer() {
     const animFramesRef = useRef<Map<string, number>>(new Map());
     const iconSignaturesRef = useRef<Map<string, string>>(new Map());
     const LRef = useRef<any>(null);
+    const [leafletReady, setLeafletReady] = useState(false);
 
     useEffect(() => {
+        let disposed = false;
         import('leaflet').then((L) => {
+            if (disposed) return;
             LRef.current = L;
+            setLeafletReady(true);
         });
+        return () => { disposed = true; };
     }, []);
 
     useEffect(() => {
@@ -132,13 +138,18 @@ export function LiveTrainLayer() {
             const prevPos = prevPositionsRef.current.get(train.id);
 
             if (existingMarker && prevPos) {
-                const isMoving = prevPos.lat !== train.lat || prevPos.lng !== train.lng;
+                const positionChanged = prevPos.lat !== train.lat || prevPos.lng !== train.lng;
+                const isMoving = isMapTrainVisuallyMoving(train);
                 const oldFrame = animFramesRef.current.get(train.id);
-                if (oldFrame) cancelAnimationFrame(oldFrame);
+                if (oldFrame && positionChanged) {
+                    cancelAnimationFrame(oldFrame);
+                    animFramesRef.current.delete(train.id);
+                }
 
-                if (isMoving && !isDocumentHidden()) {
-                    const startLat = prevPos.lat;
-                    const startLng = prevPos.lng;
+                if (positionChanged && !isDocumentHidden()) {
+                    const renderedPosition = existingMarker.getLatLng();
+                    const startLat = renderedPosition.lat;
+                    const startLng = renderedPosition.lng;
                     const endLat = train.lat;
                     const endLng = train.lng;
                     let startTime: number | null = null;
@@ -165,7 +176,7 @@ export function LiveTrainLayer() {
                     };
 
                     animFramesRef.current.set(train.id, requestAnimationFrame(animate));
-                } else if (isMoving) {
+                } else if (positionChanged) {
                     existingMarker.setLatLng([train.lat, train.lng]);
                 }
 
@@ -178,7 +189,7 @@ export function LiveTrainLayer() {
             } else {
                 const zoomLevel = getIconZoomBucket(map.getZoom());
                 const marker = L.marker([train.lat, train.lng], {
-                    icon: createTrainIcon(L, train, false, zoomLevel),
+                    icon: createTrainIcon(L, train, isMapTrainVisuallyMoving(train), zoomLevel),
                     zIndexOffset: train.source === 'predicted' ? -300 : 100,
                 }).addTo(map);
 
@@ -188,7 +199,7 @@ export function LiveTrainLayer() {
                 });
 
                 markersRef.current.set(train.id, marker);
-                iconSignaturesRef.current.set(train.id, getTrainIconSignature(train, false, zoomLevel));
+                iconSignaturesRef.current.set(train.id, getTrainIconSignature(train, isMapTrainVisuallyMoving(train), zoomLevel));
             }
 
             prevPositionsRef.current.set(train.id, {
@@ -196,7 +207,7 @@ export function LiveTrainLayer() {
                 lng: train.lng,
             });
         });
-    }, [trains, map, selectTrain]);
+    }, [trains, map, selectTrain, leafletReady]);
 
     useEffect(() => {
         const L = LRef.current;
@@ -207,8 +218,7 @@ export function LiveTrainLayer() {
             markersRef.current.forEach((marker, trainId) => {
                 const train = useTrainStore.getState().trains.find((candidate) => candidate.id === trainId);
                 if (!train) return;
-                const prevPos = prevPositionsRef.current.get(trainId);
-                const isMoving = prevPos ? prevPos.lat !== train.lat || prevPos.lng !== train.lng : false;
+                const isMoving = isMapTrainVisuallyMoving(train);
                 const iconSignature = getTrainIconSignature(train, isMoving, zoomLevel);
                 if (iconSignaturesRef.current.get(trainId) !== iconSignature) {
                     marker.setIcon(createTrainIcon(L, train, isMoving, zoomLevel));
@@ -219,7 +229,7 @@ export function LiveTrainLayer() {
 
         map.on('zoomend', handleZoom);
         return () => { map.off('zoomend', handleZoom); };
-    }, [map]);
+    }, [map, leafletReady]);
 
     useEffect(() => {
         const animFrames = animFramesRef.current;

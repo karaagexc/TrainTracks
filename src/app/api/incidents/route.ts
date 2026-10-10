@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listDurableIncidents } from '@/domain/crowd/durableIncidents';
+import { listDurableIncidentSnapshot } from '@/domain/crowd/durableIncidents';
 import { noStoreHeaders } from '@/domain/predictions/http';
 import type { LineId } from '@/types';
 
@@ -16,11 +16,14 @@ export async function GET(request: NextRequest) {
         });
     }
 
+    const result = await listDurableIncidentSnapshot(rawLine ?? null);
     return NextResponse.json({
-        ok: true,
+        ok: result.ok,
         generatedAt: new Date().toISOString(),
-        incidents: await listDurableIncidents(rawLine ?? null),
+        incidents: result.incidents,
+        error: result.ok ? null : 'incident_storage_unavailable',
     }, {
         headers: noStoreHeaders(),
+        status: result.status,
     });
 }
